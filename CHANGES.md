@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-09-13 — T2904/T2906 default-branch publication
+
+- Owner: LordVaderCW.
+- Publish the verified whole-level FBX/OBJ and saved-KMAP MCP implementation on the default `ghost-studio` branch at the user's request. Updated the export guide to distinguish current source from older downloaded executables.
+- Verification: the existing default tip is an ancestor of the tested export commit, so publication preserves history. The source implementation and prior targeted test/Debug build results are unchanged; desktop workflow acceptance remains unverified as recorded below. No new executable release is included.
+- Intersects: commits `8db0b6c3`, `67b69196`, `e1755571`, and `7076d2e1` carrying the accumulated authoring/runtime and module-export updates.
+
 ## 2026-09-13 — T2904/T2906 whole-level mesh export
 
 - Owner: LordVaderCW.
@@ -10,7 +17,7 @@
 - Missing required geometry fails before publication; writer failure preserves previous files. Texture references are rewritten by complete MTL entry, preserving overlapping names. Both writers' UV flips are paired with flipped texture copies. FBX/OBJ sidecars are separated by format.
 - Verification: 18 focused level-export regressions; five existing placement/flattener regressions; targeted native payload identity/project inclusion checks; successful isolated Debug x64 host build. K2 `001ebo1` MCP comparison matched PyKotor across 60 nodes. Real two-room exports produced 38 meshes/8,184 triangles in both formats; independent trimesh OBJ reimport retained 8,184 triangles and expected positioned bounds. No broad scans or game-file writes.
 - Visible verification limitation: launched the real Debug app under Visual Studio and inspected its live accessibility tree. End-to-end menu/export and theme appearance proof remain unverified because desktop capture fails with `SetIsBorderRequired / 0x80004002`, clicks report unavailable coordinate geometry, and keyboard workflow state is unreliable. This entry does not claim a completed UI acceptance check or a new binary release.
-- Intersects: existing uncommitted work on `codex/publish-ghost-studio-20260805` in Core.IO mesh conversion/export transactions, Core.Tools module window/controller and native manifests. Only this export change is isolated for publication; unrelated edits are preserved. GitHub default `ghost-studio` at `4d15cfc5` remains a separate older build line.
+- Intersects: existing uncommitted work on `codex/publish-ghost-studio-20260805` in Core.IO mesh conversion/export transactions, Core.Tools module window/controller and native manifests. Only this export change is isolated for publication; unrelated edits are preserved. GitHub default `ghost-studio` was at `4d15cfc5` before this update.
 
 This file records completed fixes and software changes so future agents can see what has already been done and avoid repeating work.
 

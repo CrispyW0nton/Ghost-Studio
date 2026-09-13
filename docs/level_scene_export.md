@@ -33,17 +33,17 @@ textures are reported and their resource references are retained. Geometry
 export does not require a game-ready walkmesh. A failed export leaves previous
 output files intact.
 
-## Development branch main-window commands
+## Main-window commands
 
-The main scene window and the Level Editor have separate File menus. Development
-builds based on `codex/publish-ghost-studio-20260805` provide additional commands.
+The main scene window and the Level Editor have separate File menus. Current
+source on the default `ghost-studio` branch provides additional commands.
 Select a room in the loaded module layout in the main window
 and use **File → Export Full Module as One FBX…** or **File → Export Clean Full
 Map as OBJ…**. The clean-map OBJ workflow filters backdrop geometry. These are
-different commands from the Level Editor's whole-level export. The GitHub default
-`ghost-studio` branch at `4d15cfc5` has neither command and still has the old
-manifest-only Level Editor implementation. Check the branch/commit used to build
-the executable; "latest on GitHub" does not identify the same code across branches.
+different commands from the Level Editor's whole-level export. Older builds from
+`4d15cfc5` have neither command and have the manifest-only Level Editor
+implementation. Build the updated source to obtain these features; updating
+GitHub source does not replace an already downloaded executable.
 
 ## AI and MCP access
 
