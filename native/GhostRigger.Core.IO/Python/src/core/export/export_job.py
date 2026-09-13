@@ -217,7 +217,12 @@ def run_export_job(
                     backup = staging_dir / f"{final.name}.ghostrigger_backup"
                     os.replace(final, backup)
                     backups[final] = backup
-                os.replace(staged, final)
+                if request.overwrite:
+                    os.replace(staged, final)
+                else:
+                    # Atomic creation: a file appearing after preflight must
+                    # never be replaced. Staging cleanup removes the other link.
+                    os.link(staged, final)
                 final_paths.append(final)
         except Exception as exc:
             rollback_messages = _rollback_promoted_outputs(final_paths, backups)

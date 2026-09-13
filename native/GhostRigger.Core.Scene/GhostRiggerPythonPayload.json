@@ -39,7 +39,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_EXPORT_BRIDGE",
             "source_path": "src/core/level/level_export_bridge.py",
             "packaged_path": "Python/src/core/level/level_export_bridge.py",
-            "sha256": "95b567fad83e9807a84b30340501b65ba781be693817204c56e131135d267661"
+            "sha256": "ee83764532932b044cd9363f2fe4102c40ecb06acb73f94d8576f55db79e455b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_MANIFEST",
@@ -561,7 +561,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_STOCK_CONTENT_PREVIEW",
             "source_path": "src/core/modules/map_studio_stock_content_preview.py",
             "packaged_path": "Python/src/core/modules/map_studio_stock_content_preview.py",
-            "sha256": "5829b44923f68936aaa357e60132101979beae6b0c0511af963fe4ab36d1ccb3"
+            "sha256": "216f2d974e30cd9390fa682654807eb98a11f1ad6229f76dbd2f07bf265e59f2"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_TERRAIN_KIT",
@@ -627,7 +627,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_CONTROLLER",
             "source_path": "src/core/modules/module_editor_controller.py",
             "packaged_path": "Python/src/core/modules/module_editor_controller.py",
-            "sha256": "2832580e850609a4952555d27552c4534d17dbcbc91f572bada4b80472248aa6"
+            "sha256": "a804c57ddc67f79613e330c0b62e85819fe09677b53183ce034776e9b2827bed"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_MODEL",

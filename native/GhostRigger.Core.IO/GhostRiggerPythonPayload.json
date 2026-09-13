@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.IO",
-    "file_count": 48,
+    "file_count": 49,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -33,7 +33,7 @@
             "resource_name": "PYTHON_PAYLOAD_CONVERTERS_MESH_CONVERTER",
             "source_path": "src/converters/mesh_converter.py",
             "packaged_path": "Python/src/converters/mesh_converter.py",
-            "sha256": "0608d40b4695f767d316e19b2438eaeca150dd031ffc17ad1209f930e2fc9530"
+            "sha256": "1f4766e31405a03cf0cd9be0a60350fe48fbeebb0045b421d5a70fae6b8b027e"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CONVERTERS_NORMAL_MAP",
@@ -51,7 +51,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_EXPORT_JOB",
             "source_path": "src/core/export/export_job.py",
             "packaged_path": "Python/src/core/export/export_job.py",
-            "sha256": "44354f2e376d07d93a06dc01ca16fbcb8d5015301655bb0552d6103cf5997cda"
+            "sha256": "8eb6bf79efb5db58f2c1244e2dba82daa5b0920d1d2a3a79bc48c78ba84c1af8"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_GLTF_IMPORTER",
@@ -274,6 +274,12 @@
             "source_path": "src/io/kotor_gui_io.py",
             "packaged_path": "Python/src/io/kotor_gui_io.py",
             "sha256": "0144c898ea0a2ead0a48e21e97be6d829639b6f0ca9d4cf19b366ae8351f29cf"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_LEVEL_SCENE_EXPORT",
+            "source_path": "src/io/level_scene_export.py",
+            "packaged_path": "Python/src/io/level_scene_export.py",
+            "sha256": "a7d18619f75d0c140b85b2855881bcda4de3d4f2ae7b4b443e0bcb999fd63a8c"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_MDL_AUTO_IMPORT",

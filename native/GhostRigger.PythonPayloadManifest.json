@@ -1,7 +1,7 @@
 [
     {
         "project": "GhostRigger.Core.Automation",
-        "python_file_count": 48,
+        "python_file_count": 49,
         "files": [
             "src\\adapters\\scripts\\__init__.py",
             "src\\adapters\\scripts\\unavailable_compiler.py",
@@ -41,6 +41,7 @@
             "src\\kotormcp\\tools\\kotor_input.py",
             "src\\kotormcp\\tools\\kotor_live_log.py",
             "src\\kotormcp\\tools\\legacy_ghostscripter.py",
+            "src\\kotormcp\\tools\\level_export.py",
             "src\\kotormcp\\tools\\modules.py",
             "src\\kotormcp\\tools\\quest.py",
             "src\\kotormcp\\tools\\refs.py",
@@ -55,7 +56,7 @@
     },
     {
         "project": "GhostRigger.Core.GUI.Display",
-        "python_file_count": 326,
+        "python_file_count": 327,
         "files": [
             "src\\gui\\__init__.py",
             "src\\gui\\assets\\__init__.py",
@@ -78,6 +79,7 @@
             "src\\gui\\dialogs\\add_model_to_scene_dialog.py",
             "src\\gui\\dialogs\\error_report.py",
             "src\\gui\\dialogs\\fbx_sdk_setup_dialog.py",
+            "src\\gui\\dialogs\\level_scene_export_dialog.py",
             "src\\gui\\dialogs\\lightmap_bake_worker.py",
             "src\\gui\\dialogs\\lightmap_preview_window.py",
             "src\\gui\\dialogs\\map_studio_obj_room_import_dialog.py",
@@ -403,7 +405,7 @@
     },
     {
         "project": "GhostRigger.Core.IO",
-        "python_file_count": 48,
+        "python_file_count": 49,
         "files": [
             "src\\adapters\\files\\__init__.py",
             "src\\adapters\\files\\local_file_writer.py",
@@ -450,6 +452,7 @@
             "src\\io\\head_game_records.py",
             "src\\io\\head_texture_asset.py",
             "src\\io\\kotor_gui_io.py",
+            "src\\io\\level_scene_export.py",
             "src\\io\\mdl_auto_import.py",
             "src\\io\\obj_room_document.py",
             "src\\io\\skybox_panorama_conversion.py"
@@ -457,7 +460,7 @@
     },
     {
         "project": "GhostRigger.Core.Math",
-        "python_file_count": 63,
+        "python_file_count": 64,
         "files": [
             "src\\core\\camera\\__init__.py",
             "src\\core\\camera\\arcball_camera.py",
@@ -508,6 +511,7 @@
             "src\\math\\heat_diffusion_skinning.py",
             "src\\math\\landmark_alignment.py",
             "src\\math\\limb_ik.py",
+            "src\\math\\mesh_instance_transform.py",
             "src\\math\\module_layout_math.py",
             "src\\math\\transform_math.py",
             "src\\math\\viewcube_math.py",

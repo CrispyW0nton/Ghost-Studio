@@ -219,7 +219,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_EXPORT_BRIDGE",
             "source_path": "src/core/level/level_export_bridge.py",
             "packaged_path": "Python/src/core/level/level_export_bridge.py",
-            "sha256": "95b567fad83e9807a84b30340501b65ba781be693817204c56e131135d267661"
+            "sha256": "ee83764532932b044cd9363f2fe4102c40ecb06acb73f94d8576f55db79e455b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_MANIFEST",
@@ -945,7 +945,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_STOCK_CONTENT_PREVIEW",
             "source_path": "src/core/modules/map_studio_stock_content_preview.py",
             "packaged_path": "Python/src/core/modules/map_studio_stock_content_preview.py",
-            "sha256": "5829b44923f68936aaa357e60132101979beae6b0c0511af963fe4ab36d1ccb3"
+            "sha256": "216f2d974e30cd9390fa682654807eb98a11f1ad6229f76dbd2f07bf265e59f2"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_TERRAIN_KIT",
@@ -1011,7 +1011,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_CONTROLLER",
             "source_path": "src/core/modules/module_editor_controller.py",
             "packaged_path": "Python/src/core/modules/module_editor_controller.py",
-            "sha256": "2832580e850609a4952555d27552c4534d17dbcbc91f572bada4b80472248aa6"
+            "sha256": "a804c57ddc67f79613e330c0b62e85819fe09677b53183ce034776e9b2827bed"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_MODEL",
@@ -2007,7 +2007,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_MODULE_EDITOR_WINDOW",
             "source_path": "src/gui/windows/module_editor_window.py",
             "packaged_path": "Python/src/gui/windows/module_editor_window.py",
-            "sha256": "204872423324baba9499f361851ade11725d2078e375f8e3abfe887daa5002bc"
+            "sha256": "0b04855af6c9c0946bd43387489dd08a357cd6afa87d1406a1b4758c30f3446e"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_BLUEPRINT_EDITOR",
@@ -2037,7 +2037,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_PLACEABLE_BUILDER_CONTROLLER",
             "source_path": "src/gui/windows/qt_placeable_builder_controller.py",
             "packaged_path": "Python/src/gui/windows/qt_placeable_builder_controller.py",
-            "sha256": "9a0bf3a166d074beffe401e2380b49225a80b510fb1bce8572e6ca91b7432481"
+            "sha256": "62cf97cb3217d2779adea0ec5cd9ddcdefbe086a44004004f841500f9180305d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_RETARGET_PREVIEW_CONTROLLER",

@@ -38,6 +38,7 @@ PYTHON_PAYLOAD_KOTORMCP_TOOLS_KOTOR_DINPUT_HOOK RCDATA "Python/src/kotormcp/tool
 PYTHON_PAYLOAD_KOTORMCP_TOOLS_KOTOR_INPUT RCDATA "Python/src/kotormcp/tools/kotor_input.py"
 PYTHON_PAYLOAD_KOTORMCP_TOOLS_KOTOR_LIVE_LOG RCDATA "Python/src/kotormcp/tools/kotor_live_log.py"
 PYTHON_PAYLOAD_KOTORMCP_TOOLS_LEGACY_GHOSTSCRIPTER RCDATA "Python/src/kotormcp/tools/legacy_ghostscripter.py"
+PYTHON_PAYLOAD_KOTORMCP_TOOLS_LEVEL_EXPORT RCDATA "Python/src/kotormcp/tools/level_export.py"
 PYTHON_PAYLOAD_KOTORMCP_TOOLS_MODULES RCDATA "Python/src/kotormcp/tools/modules.py"
 PYTHON_PAYLOAD_KOTORMCP_TOOLS_QUEST RCDATA "Python/src/kotormcp/tools/quest.py"
 PYTHON_PAYLOAD_KOTORMCP_TOOLS_REFS RCDATA "Python/src/kotormcp/tools/refs.py"

@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Math",
-    "file_count": 63,
+    "file_count": 64,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -298,6 +298,12 @@
             "source_path": "src/math/limb_ik.py",
             "packaged_path": "Python/src/math/limb_ik.py",
             "sha256": "3d351051c134474ea17165080eb037272a6c08e4a41fb3e975d5d9f0afc813d4"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_MATH_MESH_INSTANCE_TRANSFORM",
+            "source_path": "src/math/mesh_instance_transform.py",
+            "packaged_path": "Python/src/math/mesh_instance_transform.py",
+            "sha256": "ebf040149b99a1953ecfeb93e2438ca86db3a42ade9c32d0e39c86f62ae3a886"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_MATH_MODULE_LAYOUT_MATH",

@@ -1,5 +1,17 @@
 # Changes
 
+## 2026-09-13 — T2904/T2906 whole-level mesh export
+
+- Owner: LordVaderCW.
+- Added Core.Automation's `ghoststudio_export_level` to broad KotorMCP with saved-KMAP scope, explicit paths, file size/SHA-256, tool annotations and MCP error status. Core.IO now atomically preserves files created after no-overwrite preflight and checks every resolved output against the protected game directory, including texture sidecars.
+- MCP verification: 12 focused tests, including concurrent output preservation/rollback and redirected texture-folder protection; real stdio catalog discovery, error status, whole-level export and overwrite refusal. The spatial connector remains separate and does not gain desktop control.
+- Replaced the Level Editor's manifest-only FBX placeholder with static whole-level FBX and OBJ assembly. Enabled visible stock/authored rooms and resolved authored creature/placeable/door models retain baked placement, inverse-transpose normals, mirrored winding, diffuse material slots and texture sidecars. FBX carries secondary lightmap UVs; the manifest records lightmap associations and non-mesh scene metadata.
+- Owner surfaces: Map Studio/Level Editor orchestration in Core.Tools, assembly and transactional output in Core.IO (`src/io/level_scene_export.py`), instance math in Core.Math (`src/math/mesh_instance_transform.py`), progress presentation in GUI.Display (`src/gui/dialogs/level_scene_export_dialog.py`). Package-local bridge/controller/window wiring and the converter's explicit untextured-room opt-in are included. Source KOTOR assets and live model caches are preserved.
+- Missing required geometry fails before publication; writer failure preserves previous files. Texture references are rewritten by complete MTL entry, preserving overlapping names. Both writers' UV flips are paired with flipped texture copies. FBX/OBJ sidecars are separated by format.
+- Verification: 18 focused level-export regressions; five existing placement/flattener regressions; targeted native payload identity/project inclusion checks; successful isolated Debug x64 host build. K2 `001ebo1` MCP comparison matched PyKotor across 60 nodes. Real two-room exports produced 38 meshes/8,184 triangles in both formats; independent trimesh OBJ reimport retained 8,184 triangles and expected positioned bounds. No broad scans or game-file writes.
+- Visible verification limitation: launched the real Debug app under Visual Studio and inspected its live accessibility tree. End-to-end menu/export and theme appearance proof remain unverified because desktop capture fails with `SetIsBorderRequired / 0x80004002`, clicks report unavailable coordinate geometry, and keyboard workflow state is unreliable. This entry does not claim a completed UI acceptance check or a new binary release.
+- Intersects: existing uncommitted work on `codex/publish-ghost-studio-20260805` in Core.IO mesh conversion/export transactions, Core.Tools module window/controller and native manifests. Only this export change is isolated for publication; unrelated edits are preserved. GitHub default `ghost-studio` at `4d15cfc5` remains a separate older build line.
+
 This file records completed fixes and software changes so future agents can see what has already been done and avoid repeating work.
 
 For each completed change, add a dated entry with:

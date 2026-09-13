@@ -185,6 +185,7 @@ def _build_mcp_server():
                 name=t["name"],
                 description=t["description"],
                 inputSchema=t["inputSchema"],
+                annotations=t.get("annotations"),
             ))
         return result
 
@@ -192,7 +193,10 @@ def _build_mcp_server():
     async def call_tool(name: str, arguments: Dict[str, Any]):
         raw = await handle_tool(name, arguments)
         text = raw.get("text", json.dumps(raw))
-        return [mcp_types.TextContent(type="text", text=text)]
+        content = [mcp_types.TextContent(type="text", text=text)]
+        if raw.get("isError"):
+            return mcp_types.CallToolResult(content=content, isError=True)
+        return content
 
     @SERVER.list_resources()
     async def list_res():

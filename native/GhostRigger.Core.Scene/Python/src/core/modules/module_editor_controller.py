@@ -13134,8 +13134,11 @@ class ModuleEditorController:
         self.model.log(getattr(result, "message", "Recorded Map Studio game proof."))
         return result
 
-    def export_fbx(self, output_path: str | Path, *, dry_run: bool = False):
-        return self.export_bridge.export_fbx(self.project, output_path, LevelExportOptions(dry_run=dry_run))
+    def export_fbx(self, output_path: str | Path, *, dry_run: bool = False, **context):
+        return self.export_bridge.export_fbx(self.project, output_path, LevelExportOptions(dry_run=dry_run), **context)
+
+    def export_obj(self, output_path: str | Path, *, dry_run: bool = False, **context):
+        return self.export_bridge.export_obj(self.project, output_path, LevelExportOptions(dry_run=dry_run), **context)
 
     def add_blueprint(self, name: str = "Blueprint", blueprint_type: str = "Custom", template_resref: str = ""):
         blueprint = self.blueprint_service.add_blueprint(self.project, name, blueprint_type=blueprint_type, template_resref=template_resref)

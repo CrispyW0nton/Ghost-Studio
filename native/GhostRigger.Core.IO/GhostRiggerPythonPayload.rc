@@ -45,6 +45,7 @@ PYTHON_PAYLOAD_IO_HEAD_BUILDER_PACKAGE RCDATA "Python/src/io/head_builder_packag
 PYTHON_PAYLOAD_IO_HEAD_GAME_RECORDS RCDATA "Python/src/io/head_game_records.py"
 PYTHON_PAYLOAD_IO_HEAD_TEXTURE_ASSET RCDATA "Python/src/io/head_texture_asset.py"
 PYTHON_PAYLOAD_IO_KOTOR_GUI_IO RCDATA "Python/src/io/kotor_gui_io.py"
+PYTHON_PAYLOAD_IO_LEVEL_SCENE_EXPORT RCDATA "Python/src/io/level_scene_export.py"
 PYTHON_PAYLOAD_IO_MDL_AUTO_IMPORT RCDATA "Python/src/io/mdl_auto_import.py"
 PYTHON_PAYLOAD_IO_OBJ_ROOM_DOCUMENT RCDATA "Python/src/io/obj_room_document.py"
 PYTHON_PAYLOAD_IO_SKYBOX_PANORAMA_CONVERSION RCDATA "Python/src/io/skybox_panorama_conversion.py"

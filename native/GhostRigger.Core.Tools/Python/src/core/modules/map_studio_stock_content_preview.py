@@ -724,7 +724,13 @@ def _flattened_mesh_nodes(
         if len(baked_normals) != len(baked_vertices):
             baked_normals = [(0.0, 0.0, 1.0)] * len(baked_vertices)
         uvs = [tuple(float(v) for v in uv[:2]) for uv in tuple(getattr(node, "uvs", ()) or ())]
-        if len(uvs) != len(baked_vertices):
+        face_uvs = [tuple(int(index) for index in row) for row in (getattr(node, "face_uvs", ()) or ())]
+        independent_uvs = len(face_uvs) == len(faces) and all(
+            len(row) == 3 and all(0 <= index < len(uvs) for index in row) for row in face_uvs
+        )
+        if not independent_uvs:
+            face_uvs = []
+        if not independent_uvs and len(uvs) != len(baked_vertices):
             uvs = [(0.0, 0.0)] * len(baked_vertices)
         texture_override = str(override_texture or "").strip().lower()
         if texture_override in {"null", "none", "****"}:
@@ -747,6 +753,7 @@ def _flattened_mesh_nodes(
             vertices=baked_vertices,
             normals=baked_normals,
             uvs=uvs,
+            face_uvs=face_uvs,
             faces=clean_faces,
             face_mats=face_mats,
             texture=texture,

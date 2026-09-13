@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.GUI.Display",
-    "file_count": 326,
+    "file_count": 327,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -130,6 +130,12 @@
             "source_path": "src/gui/dialogs/fbx_sdk_setup_dialog.py",
             "packaged_path": "Python/src/gui/dialogs/fbx_sdk_setup_dialog.py",
             "sha256": "b316bef0307889e70a8cd3ed3f7e90356884612363a24bd0422a7e39e47411d7"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_GUI_DIALOGS_LEVEL_SCENE_EXPORT_DIALOG",
+            "source_path": "src/gui/dialogs/level_scene_export_dialog.py",
+            "packaged_path": "Python/src/gui/dialogs/level_scene_export_dialog.py",
+            "sha256": "4cb89dbed303720c4f452ee2ff87ed2edc2b72bb7b3186d35586293049a1ae22"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_DIALOGS_LIGHTMAP_BAKE_WORKER",

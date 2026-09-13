@@ -1,5 +1,17 @@
 # Python Terminal Cheatsheet
 
+## Whole-Level Export Developer Check (External Shell)
+
+Run from the repository root in an external shell with repository Python
+dependencies installed. Replace the installation/output paths. This checks two
+positioned K2 `001ebo1` room instances in FBX and OBJ and saves a KMAP fixture;
+it does not write to the game installation or replace the required live UI test.
+
+```powershell
+python scripts/verify_level_scene_export.py --k2-dir "C:/Games/Star Wars - KotOR2" --output "C:/Temp/ghost-level-export-proof"
+python -m pytest tests/test_level_fbx_export.py -q -p no:cacheprovider
+```
+
 This file records useful commands for the embedded GhostRigger Python terminal.
 When terminal helpers or practical terminal workflows are added or changed,
 update this file so future agents and users can reuse them.
@@ -656,3 +668,18 @@ The last command opens the actual Ghost Studio main-window workflow on the
 ModernGL renderer, adds PFBC09 and PMBC09 as KMAX scene objects, attaches their
 stock K2 heads through BAS, samples inherited `b11a3`, and saves side-view plus
 socket-coordinate proof without touching the game's Override directory.
+
+## Whole-level export over MCP
+
+Start the broad local server from the repository root, then reconnect the MCP
+client to refresh the tool catalog:
+
+```powershell
+python scripts/mcp/start_kotormcp_stdio.py
+python -m pytest tests/test_mcp_level_export.py tests/test_level_fbx_export.py -q
+```
+
+Call `ghoststudio_export_level` with absolute `kmap_path`, `output_path` (.fbx or
+.obj), and matching KOTOR `game_dir`. Save the KMAP first. `asset_dir` can supply
+custom resources; `overwrite: true` explicitly permits replacement of existing
+output files. See `docs/level_scene_export.md` for a complete JSON example.

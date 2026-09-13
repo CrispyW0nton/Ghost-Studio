@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Automation",
-    "file_count": 48,
+    "file_count": 49,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -129,7 +129,7 @@
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_SERVER",
             "source_path": "src/kotormcp/server.py",
             "packaged_path": "Python/src/kotormcp/server.py",
-            "sha256": "018dd5c6aa9c138cfe2b6bf49251f19d152e3bdb5ee29044f8c79709bcece0ba"
+            "sha256": "404fc3e508af28ef091d76877e04f777611f9c1798c72fc82eb7817141fa86be"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_STATE",
@@ -141,7 +141,7 @@
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_INIT",
             "source_path": "src/kotormcp/tools/__init__.py",
             "packaged_path": "Python/src/kotormcp/tools/__init__.py",
-            "sha256": "8642d3f8f2df6a9a2c79478cadab059ea9bf097a5a13b8bfd663672b111d667c"
+            "sha256": "497df170c0c98e06f9cd7a644990e664a8024027875ad9891a536ed8a166d98a"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_ARCHIVES",
@@ -232,6 +232,12 @@
             "source_path": "src/kotormcp/tools/legacy_ghostscripter.py",
             "packaged_path": "Python/src/kotormcp/tools/legacy_ghostscripter.py",
             "sha256": "e690f7f1d6dceff5efc79502b5a44b12de7efea091b7cac3e8ba6647dad8a827"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_LEVEL_EXPORT",
+            "source_path": "src/kotormcp/tools/level_export.py",
+            "packaged_path": "Python/src/kotormcp/tools/level_export.py",
+            "sha256": "9715412a9aca7416a8760e8935fbf2a413c2f3ef51fe6f442de8af6be25839a5"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_MODULES",

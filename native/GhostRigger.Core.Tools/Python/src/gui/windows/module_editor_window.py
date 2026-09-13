@@ -1347,7 +1347,10 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self.import_library_asset_action = QtGui.QAction("Import Selected Library Asset", self)
         self.import_texture_action = QtGui.QAction("Import Texture to Project...", self)
         self.import_texture_action.setObjectName("mapStudioImportTextureAction")
-        self.export_fbx_action = QtGui.QAction("Export FBX...", self)
+        self.export_fbx_action = QtGui.QAction("Export Whole Level as FBX...", self)
+        self.export_fbx_action.setToolTip("Export all enabled visible rooms and placed models to one static FBX, with textures and a scene manifest.")
+        self.export_obj_action = QtGui.QAction("Export Whole Level as OBJ...", self)
+        self.export_obj_action.setToolTip("Export the level to one OBJ with separate mesh groups, an MTL, textures and a scene manifest.")
         self.export_package_action = QtGui.QAction("Export Scene Package...", self)
         self.close_action = QtGui.QAction("Close", self)
         self.undo_action = QtGui.QAction("Undo", self)
@@ -1399,6 +1402,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         file_menu.addAction(self.import_texture_action)
         file_menu.addSeparator()
         file_menu.addAction(self.export_fbx_action)
+        file_menu.addAction(self.export_obj_action)
         file_menu.addAction(self.export_package_action)
         file_menu.addSeparator()
         file_menu.addAction(self.close_action)
@@ -1857,6 +1861,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self.import_library_asset_action.triggered.connect(self.import_selected_library_asset)
         self.import_texture_action.triggered.connect(self.import_project_texture)
         self.export_fbx_action.triggered.connect(lambda: self.export_fbx(False))
+        self.export_obj_action.triggered.connect(lambda: self._export_level_geometry("obj", False))
         self.export_package_action.triggered.connect(lambda: self.build_module_files())
         self.close_action.triggered.connect(self.close)
         self.undo_action.triggered.connect(self.undo_map_studio_command)
@@ -11524,16 +11529,39 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self._refresh_all(message)
 
     def export_fbx(self, dry_run: bool = False) -> None:
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export KMAP Scene", f"{self.project.name}.fbx", "FBX files (*.fbx)")
+        self._export_level_geometry("fbx", dry_run)
+
+    def _export_level_geometry(self, format_name: str, dry_run: bool = False) -> None:
+        from src.core.level import LevelExportOptions
+        from src.gui.qt_lib.dialogs.level_scene_export_dialog import run_level_scene_export
+
+        label = format_name.upper()
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, f"Export Whole Level as {label}", f"{self.project.name}.{format_name}",
+            f"{label} files (*.{format_name})")
         if not path:
             return
-        result = self.controller.export_fbx(path, dry_run=dry_run)
+        if not Path(path).suffix:
+            path += f".{format_name}"
+        try:
+            result = run_level_scene_export(
+                self, self.project, path, LevelExportOptions(dry_run=dry_run),
+                resource_manager=self.resource_manager,
+                template_resources=self.controller.authored_project_extra_resources())
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Level Export Failed", str(exc))
+            return
         self.validation_panel.set_issues(result.issues)
         self._log(result.message)
         if result.manifest_path:
             self._log(f"Manifest: {result.manifest_path}")
         for warning in result.warnings:
             self._log(warning)
+        if result.ok:
+            self._last_output_dir = str(Path(path).parent)
+            QtWidgets.QMessageBox.information(self, "Level Export Complete", result.message)
+        else:
+            QtWidgets.QMessageBox.warning(self, "Level Export Failed", result.message)
 
     def open_output_folder(self) -> None:
         if self._last_output_dir:
@@ -11838,6 +11866,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
             self.import_library_asset_action,
             self.import_texture_action,
             self.export_fbx_action,
+            self.export_obj_action,
             self.export_package_action,
             self.undo_action,
             self.redo_action,

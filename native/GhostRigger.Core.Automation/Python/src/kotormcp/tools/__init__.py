@@ -17,7 +17,7 @@ Architecture note (Constantine, "Structured Design"):
   are context-free — the same tool works in a Discord bot, VS Code extension,
   CI pipeline, or any other consumer without modification.
 
-  Tool manifest (v3.14 — 169 total):
+  Tool manifest (v3.14 — 170 total):
   Installation   (3): detectInstallations, loadInstallation, kotor_installation_info
   Discovery      (4): listResources, describeResource, kotor_find_resource, kotor_search_resources
   Game data      (3): journalOverview, kotor_lookup_2da, kotor_lookup_tlk
@@ -79,7 +79,7 @@ from typing import Any, Dict, List
 
 from kotormcp.utils import json_content
 from kotormcp.tools import (
-    installation, discovery, gamedata, ghostrigger,
+    installation, discovery, gamedata, ghostrigger, level_export,
     debug_skinning, debug_materials,
     modules, game_test, kotor_input, kotor_live_log, kotor_dinput_hook,
     gffdata, decompile, resource, quest,
@@ -133,6 +133,7 @@ def _native_tools() -> List[Dict[str, Any]]:
         + discovery.get_tools()           # 4  resource discovery
         + gamedata.get_tools()            # 3  game data (2da, tlk, journal)
         + ghostrigger.get_tools()         # 5  3D model pipeline
+        + level_export.get_tools()       # 1  saved KMAP whole-level export
         + debug_skinning.get_tools()      # 25 debug skinning bridge
         + modules.get_tools()             # 3  module enumeration
         + game_test.get_tools()           # 2  live game-test handoff
@@ -195,6 +196,8 @@ async def handle_tool(name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return await gamedata.handle_lookup_tlk(arguments)
 
     # ── GhostRigger-specific tools ────────────────────────────────────────────
+    if name == "ghoststudio_export_level":
+        return await level_export.handle_export_level(arguments)
     if name == "ghostrigger_open_model":
         return await ghostrigger.handle_open_model(arguments)
     if name == "ghostrigger_render_model":

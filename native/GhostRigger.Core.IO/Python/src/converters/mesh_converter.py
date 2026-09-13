@@ -654,6 +654,10 @@ class OBJExporter:
             return False
         if getattr(node, 'is_emitter', False) or getattr(node, 'is_light', False):
             return False
+        # Level assembly has already selected real room/placement surfaces.
+        # Untextured blockout meshes are valid geometry, not rig helpers.
+        if bool(getattr(node, '_gr_level_export_geometry', False)):
+            return True
         if cls._is_deformation_helper(node):
             return False
         return True
