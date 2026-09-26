@@ -75,6 +75,10 @@ class MainWindowLayoutMixin:
 
         self.content_browser_panel = QtContentBrowserPanel(self)
         self.library_panel = self.content_browser_panel
+        self.content_browser_panel.set_load_connected_map(
+            self.settings_data.get("content_browser_load_connected_map", False)
+        )
+        self.content_browser_panel.loadConnectedMapChanged.connect(self._set_content_browser_load_connected_map)
         self.content_browser_panel.scanRequested.connect(self._scan_library)
         self.content_browser_panel.deepScanRequested.connect(self._scan_library)
         self.content_browser_panel.loadRequested.connect(self._start_resource_load)

@@ -843,7 +843,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_CONTENT_BROWSER_PANEL",
             "source_path": "src/gui/panels/qt_content_browser_panel.py",
             "packaged_path": "Python/src/gui/panels/qt_content_browser_panel.py",
-            "sha256": "86dc5753ca4d7c4d2ac3169dbb32390a03656c76a08a9a41af0befcd63bf3459"
+            "sha256": "6526c408c822debe41f933dbcf4caf2b1d8f6eff9d0aea7461b50fe009f96329"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_DIAGNOSTICS_PANEL",
@@ -1767,7 +1767,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MAIN_LAYOUT",
             "source_path": "src/gui/windows/application_core/shared/main_layout.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/main_layout.py",
-            "sha256": "3030dde60ad68be1e4d046cbfcb05460f08afd4d3f965ceb40cc21612d305c61"
+            "sha256": "d163cb91d2329b9e391db44eab3fdd8a1e5b0bf4e28b8136a2eb1920edb0c89d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MODEL_IO",
@@ -1785,7 +1785,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_RESOURCE_LOADING",
             "source_path": "src/gui/windows/application_core/shared/resource_loading.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/resource_loading.py",
-            "sha256": "57f3dabb9b3251f6461d21c5af8d298274653d57947ac5036ff2c13342453bec"
+            "sha256": "16137fcc1723ea0055c2c1048d0136359bc0282ff5cd97513d43ea13e4fca3a7"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_RESOURCE_PANELS",

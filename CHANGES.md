@@ -1,5 +1,18 @@
 # Changes
 
+## 2026-09-25 — Main-branch module loading and preview memory updates
+
+- Owner: LordVaderCW.
+- Apply the selected-room default / connected-map option and bounded software
+  texture previews to the existing `ghost-studio` default branch at the user's
+  request. Preserve the newer whole-level export changes.
+- Intersects: `ghost-studio` commits `7076d2e1` and `b91be099`; GUI Display
+  payload manifest and changelog. Original work: `438ba8f0` and `1c6284e9`.
+- Verification: 46 focused module-loading, module-placement, texture-cache,
+  resource-revision, and payload-manifest checks passed on the combined tree;
+  `git diff --check` passed. Prior native visual verification remains blocked
+  by capture/input failures; this publication does not claim a new UI pass.
+
 ## 2026-09-13 — T2904/T2906 default-branch publication
 
 - Owner: LordVaderCW.
@@ -29,6 +42,25 @@ For each completed change, add a dated entry with:
 - The verification performed, such as tests, MCP comparisons, or manual checks
 
 ## 2026-09-25
+
+### Choose module loading scope in Content Browser (pending visible qualification)
+
+Owner: LordVaderCW
+
+Subsystem: Content Browser / main-scene import; GhostRigger.Core.GUI.Display.
+
+- Add a Module loading dropdown above the asset list: Selected room only
+  (default) or Entire connected map. Save the preference between sessions.
+- Route double-click and main-scene context actions through this choice before
+  resolving the full module layout; preserve the existing connected-room path.
+- Keep an open Settings dialog's snapshot in sync so it cannot undo the choice.
+- These GUI files are package-local owners in this checkout: no matching root
+  src files exist. Regenerated the GUI Display payload manifest.
+- Verification: 25 focused tests passed; Debug|x64 native host built successfully.
+  Native app launched through Visual Studio; screenshot capture and coordinate
+  input failed, so visual/theme and live room-load qualification remain pending.
+  Seven older browser/theme test failures reproduced with unchanged code.
+  Details: docs/audits/2026-09-25-module-loading-scope.md.
 
 ### Bound software viewport texture previews (pending visible qualification)
 

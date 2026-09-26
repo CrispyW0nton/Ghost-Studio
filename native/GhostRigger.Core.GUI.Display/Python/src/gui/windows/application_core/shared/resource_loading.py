@@ -22,6 +22,7 @@ from src.core.scene.module_scene_import import (
 from src.math.module_layout_math import module_anchor_relative_position
 from src.core.scene.scene_resource_ref import SceneResourceRef
 from src.gui.qt_lib.dialogs.add_model_to_scene_dialog import AddModelToSceneChoice, AddModelToSceneDialog
+from src.gui.qt_lib.dialogs.qt_settings_dialog import save_settings
 from src.gui.windows.application_core.application_core_lib.functions.geometry import (
     _walkmesh_overlay_node_from_wok,
     _walkmesh_overlay_offset_for_model,
@@ -190,7 +191,19 @@ class ResourceLoadingMixin:
     def _row_is_module_asset(row: dict) -> bool:
         return str(row.get("category") or "").strip().lower() == "modules" or bool(row.get("module_code"))
 
+    def _set_content_browser_load_connected_map(self, enabled: bool) -> None:
+        self.settings_data["content_browser_load_connected_map"] = enabled is True
+        dialog = getattr(self, "_settings_dialog", None)
+        if dialog is not None:
+            dialog.settings["content_browser_load_connected_map"] = enabled is True
+        try:
+            save_settings(self.settings_path, self.settings_data)
+        except Exception as exc:
+            self._log(f"Module loading preference could not be saved: {exc}", "error")
+
     def _start_content_browser_module_load(self, row: dict, import_action: str = "") -> bool:
+        if self.settings_data.get("content_browser_load_connected_map", False) is not True:
+            return False
         if self._model_worker_is_running():
             self._log("A model is already loading.", "warning")
             return True

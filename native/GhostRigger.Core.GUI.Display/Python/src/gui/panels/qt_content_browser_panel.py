@@ -569,6 +569,7 @@ class QtContentBrowserPanel(QtWidgets.QWidget):
     scanRequested = QtCore.Signal()
     deepScanRequested = QtCore.Signal()
     libraryActionRequested = QtCore.Signal(str)
+    loadConnectedMapChanged = QtCore.Signal(bool)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent)
@@ -955,6 +956,26 @@ class QtContentBrowserPanel(QtWidgets.QWidget):
         for column in range(3):
             filters.setColumnStretch(column, 1)
         layout.addLayout(filters)
+
+        self.module_load_scope = QtWidgets.QComboBox()
+        self.module_load_scope.setObjectName("contentBrowserModuleLoadScope")
+        self.module_load_scope.addItem("Selected room only", False)
+        self.module_load_scope.addItem("Entire connected map", True)
+        self.module_load_scope.setToolTip(
+            "Controls module rooms opened or added to the main scene. "
+            "Selected room only uses less memory. Entire connected map loads all "
+            "rooms in the module layout at their connected positions. "
+            "Applies to the next load; existing scene objects are unchanged."
+        )
+        self._make_combo_shrinkable(self.module_load_scope)
+        self.module_load_scope.currentIndexChanged.connect(
+            lambda _index: self.loadConnectedMapChanged.emit(self.module_load_scope.currentData() is True)
+        )
+        layout.addLayout(self._labeled_filter("Module loading", self.module_load_scope))
+
+    def set_load_connected_map(self, enabled: bool) -> None:
+        with QtCore.QSignalBlocker(self.module_load_scope):
+            self.module_load_scope.setCurrentIndex(1 if enabled is True else 0)
 
     def _labeled_filter(self, text: str, combo: QtWidgets.QComboBox) -> QtWidgets.QVBoxLayout:
         wrapper = QtWidgets.QVBoxLayout()
