@@ -28,6 +28,34 @@ For each completed change, add a dated entry with:
 - The files or area affected
 - The verification performed, such as tests, MCP comparisons, or manual checks
 
+## 2026-09-25
+
+### Bound software viewport texture previews (pending visible qualification)
+
+Owner: LordVaderCW
+
+Subsystem: GhostRigger.Core.Rendering, frame rendering texture-cache lifecycle.
+
+- Bound derived half-resolution texture pixels to 32 MiB / 128 entries per cache;
+  retain live previews and use existing base pixels when full to avoid repeated
+  resize/eviction work in larger scenes. Base and authored textures are preserved.
+- Clear derived pixels on texture-source changes, verify weak source identities,
+  and prevent in-flight resize work from repopulating an invalidated cache.
+- The implementation remains package-local at
+  `native/GhostRigger.Core.Rendering/Python/src/core/rendering/frame_core/texture_cache.py`:
+  this split-source checkout has no root `src` counterpart. Regenerated Rendering's
+  payload manifest; the native host build also corrected one stale Tools payload
+  hash without changing Tools source.
+- Verification: 24 targeted tests passed, including real K2 texture decode parity,
+  authored-image retention, paint updates, invalidation races, and payload hashes.
+  A 160 x 512-square RGBA texture probe retained 40 MiB of derived pixels after a
+  library change before the fix; the fix retains at most 32 MiB and zero after the
+  change. Debug native host build succeeded and launched through Visual Studio.
+  Visible viewport proof remains blocked by desktop-capture timeouts.
+- Scope limit: this is a software texture-preview cache fix, not a verified cure
+  for the community report of module/NPC/VFX crashes. Full-map loading, base CPU
+  textures, GPU residency, and reporter-specific crash evidence remain separate.
+
 ## 2026-08-05
 
 ### [2026-08-05] fix K1 room lightmaps and add one-mesh Export Selected FBX
