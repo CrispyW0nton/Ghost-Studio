@@ -8,6 +8,7 @@ import math
 import numpy as np
 
 from src.core.geometry.model_data import KOTOR_BASE_SKELETONS
+from src.core.rendering.mesh_render_data import _node_has_renderable_rigid_surface
 from src.math.gpu_math import _quat_rotate_batch
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,8 @@ def _compute_model_bounds(model) -> dict:
     nodes = list(_all_nodes_fn()) if _all_nodes_fn else getattr(model, "nodes", [])
 
     for node in nodes:
+        if getattr(node, "render", True) is False:
+            continue
         verts = getattr(node, "vertices", None) or []
         if not verts:
             continue
@@ -43,7 +46,10 @@ def _compute_model_bounds(model) -> dict:
 
         if not has_uvs and not _bounds_is_module:
             continue
-        if node.name.lower().endswith(("_g", "_g0", "_dum")):
+        if (
+            node.name.lower().endswith(("_g", "_g0", "_dum"))
+            and not _node_has_renderable_rigid_surface(node)
+        ):
             continue
         try:
             v_arr = np.array(verts, dtype=np.float64)

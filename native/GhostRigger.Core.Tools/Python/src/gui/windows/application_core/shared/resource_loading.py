@@ -636,7 +636,17 @@ class ResourceLoadingMixin:
             return
         self._start_model_load(path)
     def _open_startup_inputs(self):
-        mdl_path = str(self.startup_input.get("mdl") or "").strip()
+        unreal_snapshot = str(self.startup_input.get("unreal_snapshot") or "").strip()
+        if unreal_snapshot:
+            window = self._open_module_editor_window()
+            if window is not None:
+                window.open_unreal_pipeline(unreal_snapshot)
+            return
+        # The native host's positional CLI argument is named ``model`` while
+        # older IPC/startup callers use ``mdl``.  Accept both so Explorer
+        # "Open with" and direct command-line launches reach the same automatic
+        # importer as File > Open KOTOR Model.
+        mdl_path = str(self.startup_input.get("mdl") or self.startup_input.get("model") or "").strip()
         if not mdl_path:
             return
         texture_dir = str(self.startup_input.get("texture_dir") or "").strip()
@@ -666,6 +676,12 @@ class ResourceLoadingMixin:
         )
         if body is None:
             raise FileNotFoundError(f"{game}:{body_resref}.mdl")
+        character_preset = recipe.get("character_preset") or {}
+        if isinstance(character_preset, dict) and character_preset.get("utc_resref"):
+            from src.systems.bas.character_presets import apply_bas_texture_override
+
+            apply_bas_texture_override(body, character_preset.get("body_texture", ""))
+            setattr(body, "_gr_bas_character_preset", dict(character_preset))
         self._animation_timer.stop()
         self._animation_engine = None
         self._animation_last_tick = None
@@ -718,6 +734,10 @@ class ResourceLoadingMixin:
             )
             if slot == "head":
                 self._current_head_model = model
+                if isinstance(character_preset, dict):
+                    from src.systems.bas.character_presets import apply_bas_texture_override
+
+                    apply_bas_texture_override(model, character_preset.get("head_texture", ""))
             else:
                 self._current_attachment_model = model
 
@@ -727,7 +747,11 @@ class ResourceLoadingMixin:
         preview = getattr(self, "_bas_preview_model", None)
         if hasattr(self, "body_attachment_panel"):
             if hasattr(self.body_attachment_panel, "set_mode"):
-                self.body_attachment_panel.set_mode(self._bas_mode)
+                if isinstance(character_preset, dict) and character_preset.get("utc_resref"):
+                    self.body_attachment_panel.set_composition_mode(self._bas_mode)
+                    self.body_attachment_panel.set_mode("character_preset")
+                else:
+                    self.body_attachment_panel.set_mode(self._bas_mode)
             self.body_attachment_panel.set_body_model(body)
             for slot in BAS_SLOT_ORDER:
                 if slot == "body":

@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Math",
-    "file_count": 63,
+    "file_count": 66,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -123,7 +123,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_GEOMETRY_MODEL_DATA",
             "source_path": "src/core/geometry/model_data.py",
             "packaged_path": "Python/src/core/geometry/model_data.py",
-            "sha256": "6cb0af36c09188165d2376daab5b073122443a340e31a5b1c94781f2756b3f0c"
+            "sha256": "06322a8d15289ca62ecc679acb4184ff99e3e87c175ea14756282c9a0d3b1efa"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_GEOMETRY_POLYGON_MESH_OPERATIONS",
@@ -273,7 +273,7 @@
             "resource_name": "PYTHON_PAYLOAD_MATH_HEAD_SKIN_TRANSFER",
             "source_path": "src/math/head_skin_transfer.py",
             "packaged_path": "Python/src/math/head_skin_transfer.py",
-            "sha256": "001879343518f38df193c48676680920b24d93bebd8537e4ba4c0176c269cbf0"
+            "sha256": "4401fb3a99661a1f8144d05d87a5f4a24982fb70fb5de68f91b064b38a054192"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_MATH_HEAD_UV",
@@ -300,6 +300,12 @@
             "sha256": "3d351051c134474ea17165080eb037272a6c08e4a41fb3e975d5d9f0afc813d4"
         },
         {
+            "resource_name": "PYTHON_PAYLOAD_MATH_MESH_INSTANCE_TRANSFORM",
+            "source_path": "src/math/mesh_instance_transform.py",
+            "packaged_path": "Python/src/math/mesh_instance_transform.py",
+            "sha256": "ebf040149b99a1953ecfeb93e2438ca86db3a42ade9c32d0e39c86f62ae3a886"
+        },
+        {
             "resource_name": "PYTHON_PAYLOAD_MATH_MODULE_LAYOUT_MATH",
             "source_path": "src/math/module_layout_math.py",
             "packaged_path": "Python/src/math/module_layout_math.py",
@@ -310,6 +316,18 @@
             "source_path": "src/math/transform_math.py",
             "packaged_path": "Python/src/math/transform_math.py",
             "sha256": "8955b589e685a5ef5510a9981b43feadbdf0ad56f7971d7af2e5ba3f13102190"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_MATH_UNREAL_LEVEL_SPACE",
+            "source_path": "src/math/unreal_level_space.py",
+            "packaged_path": "Python/src/math/unreal_level_space.py",
+            "sha256": "0e2bfaf69ebb88bdde1aa8b7f59b7211d7840a9ab1b73e846d1a2c72a941772a"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_MATH_UNREAL_NATIVE_SURFACE",
+            "source_path": "src/math/unreal_native_surface.py",
+            "packaged_path": "Python/src/math/unreal_native_surface.py",
+            "sha256": "b6fde92359bcd1014a1d28b3b4a62dbd7ecda0e28332b71069b68ee62d6f6ed6"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_MATH_VIEWCUBE_MATH",

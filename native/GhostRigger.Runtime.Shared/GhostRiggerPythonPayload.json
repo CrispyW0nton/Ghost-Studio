@@ -39,7 +39,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_ASSETS_RESOURCE_MANAGER",
             "source_path": "src/core/assets/resource_manager.py",
             "packaged_path": "Python/src/core/assets/resource_manager.py",
-            "sha256": "f315d584449cccb77df10db46d5ec3e2d09a17ecf2c02a260b3c26f034fd3091"
+            "sha256": "26ad885664ab592be5d7597f0319b35ef789a6818c5a0f63432e0e383750fca9"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_PORTS_INIT",
@@ -87,7 +87,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_MESH_RENDER_DATA",
             "source_path": "src/core/rendering/mesh_render_data.py",
             "packaged_path": "Python/src/core/rendering/mesh_render_data.py",
-            "sha256": "221b4004860f1ab2b8ac78725a82dfa28612f1abc58b994cd30659b6874dac9b"
+            "sha256": "865582af0f41c134115ae8f04867806f78f6fd93bf5911a9c1244ebf9ddfd53d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_RENDERER_BACKEND",

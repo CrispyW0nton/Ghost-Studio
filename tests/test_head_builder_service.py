@@ -24,6 +24,12 @@ from src.core.characters.head_builder_service import (
     HeadBuilderServiceError,
     valid_head_output_resref,
 )
+from src.core.characters.head_facial_transplant import (
+    ROLE_NODE_NAMES,
+    _apply_rigid_payload,
+)
+from src.core.characters.head_art_anatomy import HeadArtAnatomyRole
+import src.core.characters.head_facial_transplant as head_facial_transplant
 from src.core.geometry.model_data import (
     Animation,
     BoneWeight,
@@ -49,6 +55,105 @@ from src.math.head_alignment import HeadAlignmentAnchor, transform_point
 def _attach(parent: ModelNode, child: ModelNode) -> None:
     parent.children.append(child)
     child.parent = parent
+
+
+def test_facial_transplant_accepts_stock_k1_teeth_node_names() -> None:
+    upper = {
+        value.casefold()
+        for value in ROLE_NODE_NAMES[HeadArtAnatomyRole.UPPER_TEETH]
+    }
+    lower = {
+        value.casefold()
+        for value in ROLE_NODE_NAMES[HeadArtAnatomyRole.LOWER_TEETH]
+    }
+
+    assert "teethua" in upper
+    assert "teethla" in lower
+
+
+def test_rigid_facial_payload_preserves_secondary_skin_bind_contract() -> None:
+    tongue = ModelNode(
+        name="tongue",
+        flags=int(NodeFlags.HEADER | NodeFlags.MESH | NodeFlags.SKIN),
+        bone_map=["f_tonguetip_g", "f_jaw_g"],
+        qbone_list=[(0.0, 0.0, 0.0, 1.0)] * 3,
+        tbone_list=[(0.0, 0.0, 0.0)] * 3,
+        skin_data=[VertexSkinData([BoneWeight(0, 1.0)])],
+    )
+    tongue.bone_node_indices = [16, 13]
+    tongue.bone_map_floats = [-1.0, 0.0, 1.0]
+    saved_contract = (
+        list(tongue.bone_map),
+        list(tongue.bone_node_indices),
+        list(tongue.bone_map_floats),
+        list(tongue.qbone_list),
+        list(tongue.tbone_list),
+    )
+
+    _apply_rigid_payload(
+        tongue,
+        vertices=[(-0.01, 0.0, 0.0), (0.01, 0.0, 0.0), (0.0, 0.02, 0.0)],
+        faces=[(0, 1, 2)],
+        normals=[(0.0, 0.0, 1.0)] * 3,
+        uvs=[(0.0, 0.0), (1.0, 0.0), (0.5, 1.0)],
+        texture_resref="P_CUSTOMH",
+        skin_bone_name="f_jaw_g",
+    )
+
+    assert saved_contract == (
+        tongue.bone_map,
+        tongue.bone_node_indices,
+        tongue.bone_map_floats,
+        tongue.qbone_list,
+        tongue.tbone_list,
+    )
+    assert len(tongue.skin_data) == 3
+    assert all(
+        row.influences == [BoneWeight(1, 1.0)]
+        for row in tongue.skin_data
+    )
+
+
+def test_facial_skin_transfer_uses_world_space_and_writes_node_local_space() -> None:
+    donor = ModelNode(
+        name="head",
+        position=(0.0, 0.0, 1.7),
+        vertices=[
+            (-0.1, 0.0, -1.7),
+            (0.1, 0.0, -1.7),
+            (0.0, 0.0, -1.5),
+        ],
+    )
+    target_world = [
+        (-0.08, 0.01, 0.01),
+        (0.08, 0.01, 0.01),
+        (0.0, 0.01, 0.18),
+    ]
+    target_normals = [(0.0, -1.0, 0.0)] * 3
+
+    donor_world, target_local, local_normals = (
+        head_facial_transplant._skin_transfer_and_payload_channels(
+            donor_skin=donor,
+            payload_skin=deepcopy(donor),
+            target_world_vertices=target_world,
+            target_world_normals=target_normals,
+        )
+    )
+
+    for actual, expected in zip(
+        donor_world,
+        [(-0.1, 0.0, 0.0), (0.1, 0.0, 0.0), (0.0, 0.0, 0.2)],
+        strict=True,
+    ):
+        assert actual == pytest.approx(expected)
+    for actual, expected in zip(
+        target_local,
+        [(-0.08, 0.01, -1.69), (0.08, 0.01, -1.69), (0.0, 0.01, -1.52)],
+        strict=True,
+    ):
+        assert actual == pytest.approx(expected)
+    for actual, expected in zip(local_normals, target_normals, strict=True):
+        assert actual == pytest.approx(expected)
 
 
 def _head_model() -> KotorModel:

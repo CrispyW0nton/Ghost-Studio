@@ -26,6 +26,8 @@ from src.core.project.custom_rigged_character_project import (
     MaterialAssignment,
     sha256_file,
 )
+from src.core.secondary_motion.profile_io import serialize_secondary_motion_profile
+from src.core.secondary_motion.workflow import compile_secondary_motion_profile
 from .custom_rigged_character_behavior_service import (
     spawn_test_script_resref,
     spawn_test_script_source,
@@ -373,6 +375,28 @@ class CustomRiggedCharacterPackagingService:
                 _write_atomic(target, source.read_bytes())
                 written[target.relative_to(package_root).as_posix()] = target
 
+            identity = dict(project.secondary_motion.get("model_identity") or {})
+            identity.update({
+                "model_resrefs": [resref],
+                "mdl_sha256": sha256_file(additional / f"{resref}.mdl"),
+                "mdx_sha256": sha256_file(additional / f"{resref}.mdx"),
+            })
+            project.secondary_motion["model_identity"] = identity
+            compiled_secondary_motion = compile_secondary_motion_profile(
+                project.secondary_motion,
+                target_kind="custom_character",
+            )
+            project.secondary_motion = compiled_secondary_motion
+            profile_id = str(compiled_secondary_motion.get("profile_id") or "secondary_motion")
+            profile_path = additional / "secondary-motion" / f"{_safe_name(profile_id)}.json"
+            _write_atomic(profile_path, serialize_secondary_motion_profile(compiled_secondary_motion))
+            profile_relative = profile_path.relative_to(package_root).as_posix()
+            written[profile_relative] = profile_path
+            requires_cloth_runtime = any(
+                str(region.get("backend") or "") == "runtime_pbd"
+                for region in compiled_secondary_motion.get("regions") or ()
+            )
+
             report_source = Path(str(model_outputs.get("report") or ""))
             if report_source.is_file():
                 target = additional / f"{resref}.model-build-report.json"
@@ -474,6 +498,11 @@ class CustomRiggedCharacterPackagingService:
                 "runtime_files": runtime_files,
                 "requires_custom_animation_patch": requires_patch,
                 "required_patch_id": "custom-animation-core" if requires_patch else "",
+                "secondary_motion_profile": profile_relative,
+                "secondary_motion_runtime_dependency": "cloth-dynamics-k2" if requires_cloth_runtime else "",
+                "secondary_motion_write_enabled": bool(
+                    dict(compiled_secondary_motion.get("runtime") or {}).get("write_enabled")
+                ),
                 "supported_executable_hashes": sorted(set(supported_hashes)),
                 "temporary_module_placement": {
                     "enabled": bool(project.gameplay_settings.get("prepare_module_placement", False)),
@@ -502,7 +531,12 @@ class CustomRiggedCharacterPackagingService:
             _write_atomic(install_plan_path, _stable_json(install_plan))
             written[install_plan_path.relative_to(package_root).as_posix()] = install_plan_path
 
-            manifest = self._patch_manager_manifest(project, requires_patch, supported_hashes)
+            manifest = self._patch_manager_manifest(
+                project,
+                requires_patch,
+                supported_hashes,
+                requires_cloth_runtime=requires_cloth_runtime,
+            )
             manifest_path = package_root / "manifest.toml"
             _write_atomic(manifest_path, manifest.encode("utf-8"))
             written[manifest_path.relative_to(package_root).as_posix()] = manifest_path
@@ -532,6 +566,7 @@ class CustomRiggedCharacterPackagingService:
                 },
                 "behavior": dict(behavior_report or {}),
                 "animation_registry": registrations,
+                "secondary_motion": compiled_secondary_motion,
                 "install_plan": install_plan,
                 "warnings": warnings,
                 "generated_at": _utc_now(),
@@ -819,9 +854,20 @@ class CustomRiggedCharacterPackagingService:
         }
 
     def _patch_manager_manifest(
-        self, project: CustomRiggedCharacterProject, requires_patch: bool, supported_hashes: Iterable[str]
+        self,
+        project: CustomRiggedCharacterProject,
+        requires_patch: bool,
+        supported_hashes: Iterable[str],
+        *,
+        requires_cloth_runtime: bool = False,
     ) -> str:
         patch_id = f"custom-creature-{_safe_name(project.resource_name)}"
+        requirements = []
+        if requires_patch:
+            requirements.append("custom-animation-core")
+        if requires_cloth_runtime:
+            requirements.append("cloth-dynamics-k2")
+        requires_toml = ", ".join(f'"{value}"' for value in requirements)
         lines = [
             "[patch]",
             f'id = "{patch_id}"',
@@ -829,7 +875,7 @@ class CustomRiggedCharacterPackagingService:
             'version = "1.0.0"',
             'author = "Ghost Studio user"',
             'description = "Merge-safe custom creature resource package generated by Ghost Studio."',
-            f'requires = [{chr(34)}custom-animation-core{chr(34)}]' if requires_patch else "requires = []",
+            f"requires = [{requires_toml}]",
             "conflicts = []",
         ]
         hashes = list(supported_hashes)

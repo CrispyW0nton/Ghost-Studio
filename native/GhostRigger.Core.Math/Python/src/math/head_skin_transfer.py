@@ -159,9 +159,11 @@ def transfer_head_skin_weights(
     """Transfer donor triangle weights onto target vertices."""
 
     palette_count = int(palette_size)
-    if palette_count <= 0 or palette_count > 16:
+    # Native KOTOR heads are not uniformly limited to 16 slots: K1's retail
+    # rep_soldier_f head uses 17, and the MDX head skin tables reserve 32.
+    if palette_count <= 0 or palette_count > 32:
         raise HeadSkinTransferError(
-            "KOTOR head skin palettes must contain 1-16 slots"
+            "KOTOR head skin palettes must contain 1-32 slots"
         )
     fallback_slot = _validate_slot(rigid_fallback_slot, palette_count)
     influence_limit = max(1, min(4, int(max_influences)))

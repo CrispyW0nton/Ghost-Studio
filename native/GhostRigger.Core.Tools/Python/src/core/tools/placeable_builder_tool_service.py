@@ -32,7 +32,11 @@ from src.core.project.placeable_asset import (
     save_placeable_asset,
     validate_placeable_asset,
 )
+from src.core.project.project_validation import ProjectValidationIssue
 from src.core.project.resource_address import ResourceAddress
+from src.core.secondary_motion.profile_io import serialize_secondary_motion_profile
+from src.core.secondary_motion.workflow import compile_secondary_motion_profile
+from src.core.validation.secondary_motion_validator import validate_secondary_motion_profile
 from src.core.resources.game_resource_provider import GameResourceProvider, GameResourceQuery
 from src.core.workflow.particle_placeable_export import build_particle_placeable
 from src.core.workflow.placeable_builder_service import placeable_library_rows
@@ -156,10 +160,45 @@ class PlaceableBuilderToolService:
                 source_sha256=sha256(appearance_bytes).hexdigest(),
                 verified=True,
             )
+        identity = dict(asset.secondary_motion.get("model_identity") or {})
+        identity["target_kind"] = "placeable"
+        if expected_model:
+            identity["model_resrefs"] = [expected_model]
+        for field_name, address in (("mdl_sha256", asset.resources.mdl), ("mdx_sha256", asset.resources.mdx)):
+            if address is None:
+                continue
+            payload = self._read(address)
+            if payload:
+                identity[field_name] = sha256(payload).hexdigest()
+        asset.secondary_motion["model_identity"] = identity
+        runtime = dict(asset.secondary_motion.get("runtime") or {})
+        runtime.update({"state": "capture_only", "write_enabled": False})
+        asset.secondary_motion["runtime"] = runtime
         return asset
 
+    @staticmethod
+    def _validation(asset: PlaceableAsset) -> PlaceableAssetValidation:
+        base = validate_placeable_asset(asset)
+        secondary = validate_secondary_motion_profile(asset.secondary_motion, target_kind="placeable")
+        issues = list(base.issues)
+        for issue in secondary.issues:
+            issues.append(ProjectValidationIssue(
+                severity="blocking" if issue.severity == "blocking" else "warning",
+                code=f"secondary_motion_{issue.code}",
+                message=issue.message,
+                target=f"secondary_motion.{issue.target}" if issue.target else "secondary_motion",
+            ))
+        document_valid = base.document_valid and secondary.can_export_profile
+        return PlaceableAssetValidation(
+            issues=tuple(issues),
+            document_valid=document_valid,
+            utp_export_ready=base.utp_export_ready and secondary.can_export_profile,
+            structural_evidence_ready=base.structural_evidence_ready and secondary.can_export_profile,
+            engine_ready=False,
+        )
+
     def validate(self, value: PlaceableAsset | Mapping[str, Any]) -> PlaceableAssetValidation:
-        return validate_placeable_asset(self._with_provider_evidence(value))
+        return self._validation(self._with_provider_evidence(value))
 
     def load_row(self, row: Mapping[str, Any]) -> PlaceableAsset:
         data = dict(row or {})
@@ -247,7 +286,7 @@ class PlaceableBuilderToolService:
 
     def save(self, value: PlaceableAsset | Mapping[str, Any]) -> PlaceableBuilderSaveResult:
         asset = self._with_provider_evidence(value)
-        validation = validate_placeable_asset(asset)
+        validation = self._validation(asset)
         if not validation.utp_export_ready:
             messages = tuple(issue.message for issue in validation.issues if issue.severity == "blocking")
             return PlaceableBuilderSaveResult(False, asset, validation, messages=messages)
@@ -268,7 +307,7 @@ class PlaceableBuilderToolService:
         return PlaceableBuilderSaveResult(
             True,
             asset,
-            validate_placeable_asset(asset),
+            self._validation(asset),
             sidecar_path=str(sidecar),
             utp_path=str(utp_path),
             utp_result=utp_result,
@@ -282,7 +321,7 @@ class PlaceableBuilderToolService:
         output_path: str | Path,
     ) -> PlaceableBuilderSaveResult:
         asset = self._with_provider_evidence(value)
-        validation = validate_placeable_asset(asset)
+        validation = self._validation(asset)
         if not validation.utp_export_ready:
             messages = tuple(issue.message for issue in validation.issues if issue.severity == "blocking")
             return PlaceableBuilderSaveResult(False, asset, validation, messages=messages)
@@ -298,7 +337,7 @@ class PlaceableBuilderToolService:
         return PlaceableBuilderSaveResult(
             True,
             asset,
-            validate_placeable_asset(asset),
+            self._validation(asset),
             utp_path=str(output_path),
             utp_result=result,
             messages=tuple(result.warnings),
@@ -313,7 +352,7 @@ class PlaceableBuilderToolService:
         """Write an install-shaped Override bundle without touching the game."""
 
         asset = self._with_provider_evidence(value)
-        validation = validate_placeable_asset(asset)
+        validation = self._validation(asset)
         if not validation.utp_export_ready:
             messages = tuple(issue.message for issue in validation.issues if issue.severity == "blocking")
             return PlaceableBuilderSaveResult(False, asset, validation, messages=messages)
@@ -413,6 +452,10 @@ class PlaceableBuilderToolService:
                 "emitter_count": particle_build.emitter_count if particle_build is not None else 0,
                 "install_root": "install/Override",
                 "resources": inventory,
+                "secondary_motion": compile_secondary_motion_profile(
+                    asset.secondary_motion,
+                    target_kind="placeable",
+                ),
                 "verification": {
                     "utp_readback": True,
                     "mdl_mdx_readback": bool(particle_effects),
@@ -420,6 +463,21 @@ class PlaceableBuilderToolService:
                     "in_game_proof": False,
                 },
             }
+            compiled_secondary_motion = dict(manifest["secondary_motion"])
+            profile_id = str(compiled_secondary_motion.get("profile_id") or "secondary_motion")
+            safe_profile_id = "".join(
+                character if character.isalnum() or character in {"_", "-", "."} else "_"
+                for character in profile_id
+            ).strip("._") or "secondary_motion"
+            profile_path = temporary / "secondary-motion" / f"{safe_profile_id}.json"
+            profile_path.parent.mkdir(parents=True, exist_ok=True)
+            profile_path.write_bytes(serialize_secondary_motion_profile(compiled_secondary_motion))
+            manifest["secondary_motion_profile"] = profile_path.relative_to(temporary).as_posix()
+            manifest["runtime_dependencies"] = (
+                ["cloth-dynamics-k2"]
+                if any(str(region.get("backend") or "") == "runtime_pbd" for region in compiled_secondary_motion.get("regions") or ())
+                else []
+            )
             (temporary / "particle_placeable_bundle.json").write_text(
                 json.dumps(manifest, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",

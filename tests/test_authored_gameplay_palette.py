@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -385,6 +386,13 @@ def test_placeable_workflow_facade_returns_library_rows_and_export_resources(tmp
     assert report.engine_ready is False
     assert resources == report.resources
     assert resources[0][0:2] == ("gr_statue", ".UTP")
+    assert len(report.secondary_motion_profiles) == 1
+    profile_id, profile_bytes = report.secondary_motion_profiles[0]
+    assert profile_id == asset.secondary_motion["profile_id"]
+    profile = json.loads(profile_bytes)
+    assert profile["model_identity"]["target_kind"] == "placeable"
+    assert profile["runtime"]["state"] == "capture_only"
+    assert profile["runtime"]["write_enabled"] is False
 
 
 def test_placeable_workflow_accepts_dependency_that_resolves_from_target_game(tmp_path: Path) -> None:

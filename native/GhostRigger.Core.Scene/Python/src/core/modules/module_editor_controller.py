@@ -688,6 +688,7 @@ class ModuleEditorController:
         self.command_history = MapStudioCommandHistory()
         self.texture_sidecar_journal = MapStudioTextureSidecarJournal()
         self._authored_placeable_resources: tuple[tuple[str, str, bytes], ...] = ()
+        self._authored_placeable_secondary_motion_profiles: tuple[tuple[str, bytes], ...] = ()
         self._authored_placeable_resource_issues: tuple[Any, ...] = ()
         self._authored_creature_resources: tuple[tuple[str, str, bytes], ...] = ()
         self._authored_scripting_resources: tuple[tuple[str, str, bytes], ...] = ()
@@ -1590,6 +1591,30 @@ class ModuleEditorController:
             self.model.log(f"Discarded unsaved changes to {count} project texture sidecar(s).")
         return int(count)
 
+    def prepare_unreal_import(self, path):
+        from src.core.workflow.unreal_map_import import preview_unreal_import
+        return preview_unreal_import(self.project, path)
+
+    def apply_unreal_import(self, preview, decisions=None):
+        from src.core.workflow.unreal_map_import import apply_unreal_import
+        updated = apply_unreal_import(self.project, preview, decisions)
+        return self.commit_unreal_import(preview, updated)
+
+    def commit_unreal_import(self, preview, updated):
+        from src.core.workflow.unreal_map_import import project_revision
+        if project_revision(self.project) != preview.expected_project_revision:
+            raise ValueError("Project changed while importing; preview again.")
+        if updated.extra_sections.get("unreal_source", {}).get("source_revision") != preview.source_revision:
+            raise ValueError("Prepared import revision does not match the preview.")
+        before = self._capture_map_studio_command_state()
+        try:
+            self.model.set_project(updated)
+            self._record_map_studio_command(action_key="map_studio.unreal.import", label="Import Unreal Level", before=before)
+        except Exception:
+            self._restore_map_studio_command_state_without_history(before)
+            raise
+        return updated
+
     def prepare_obj_room_import(
         self,
         path: str | Path,
@@ -2080,7 +2105,13 @@ class ModuleEditorController:
 
         return project_texture_export_resources(self.project)
 
-    def set_authored_placeable_resources(self, resources: Any, *, issues: Any = ()) -> None:
+    def set_authored_placeable_resources(
+        self,
+        resources: Any,
+        *,
+        issues: Any = (),
+        secondary_motion_profiles: Any = (),
+    ) -> None:
         """Inject Placeable Library resources without coupling Scene to Workflow.
 
         The Placeable Builder workflow owns UTP/dependency resolution.  Map
@@ -2099,8 +2130,27 @@ class ModuleEditorController:
             if clean_ref and clean_type and data:
                 normalized.append((clean_ref, clean_type, bytes(data)))
         next_resources = tuple(normalized)
-        changed = next_resources != self._authored_placeable_resources
+        profiles: dict[str, bytes] = {}
+        for item in tuple(secondary_motion_profiles or ()):
+            try:
+                profile_id, data = item
+            except (TypeError, ValueError):
+                continue
+            clean_id = str(profile_id or "").strip()
+            payload = bytes(data or b"")
+            if not clean_id or not payload:
+                continue
+            prior = profiles.get(clean_id)
+            if prior is not None and prior != payload:
+                raise ValueError(f"Secondary-motion profile collision for {clean_id!r}.")
+            profiles[clean_id] = payload
+        next_profiles = tuple(sorted(profiles.items()))
+        changed = (
+            next_resources != self._authored_placeable_resources
+            or next_profiles != self._authored_placeable_secondary_motion_profiles
+        )
         self._authored_placeable_resources = next_resources
+        self._authored_placeable_secondary_motion_profiles = next_profiles
         self._authored_placeable_resource_issues = tuple(issues or ())
         if changed:
             self._invalidate_map_studio_stock_preview_resources()
@@ -2198,8 +2248,10 @@ class ModuleEditorController:
     def authored_project_extra_resources(self) -> tuple[tuple[str, str, bytes], ...]:
         """Return all GUI-resolved authored resources for the final MOD."""
 
+        from src.core.workflow.unreal_map_import import unreal_runtime_resources
         resources = (
-            tuple(self.authored_project_texture_resources())
+            tuple(unreal_runtime_resources(self.project))
+            + tuple(self.authored_project_texture_resources())
             + tuple(self._authored_placeable_resources)
             + tuple(self._authored_creature_resources)
             + tuple(self._authored_architecture_runtime_resources())
@@ -12714,6 +12766,7 @@ class ModuleEditorController:
                 dry_run=dry_run,
                 strict=not dry_run,
                 extra_resources=extra_resources,
+                secondary_motion_profiles=self._authored_placeable_secondary_motion_profiles,
             )
         )
         if not dry_run and result.resources:
@@ -12778,6 +12831,7 @@ class ModuleEditorController:
                     output_dir=str(output_path),
                     strict=True,
                     extra_resources=extra_resources,
+                    secondary_motion_profiles=self._authored_placeable_secondary_motion_profiles,
                 ),
             )
         )
@@ -13134,8 +13188,11 @@ class ModuleEditorController:
         self.model.log(getattr(result, "message", "Recorded Map Studio game proof."))
         return result
 
-    def export_fbx(self, output_path: str | Path, *, dry_run: bool = False):
-        return self.export_bridge.export_fbx(self.project, output_path, LevelExportOptions(dry_run=dry_run))
+    def export_fbx(self, output_path: str | Path, *, dry_run: bool = False, **context):
+        return self.export_bridge.export_fbx(self.project, output_path, LevelExportOptions(dry_run=dry_run), **context)
+
+    def export_obj(self, output_path: str | Path, *, dry_run: bool = False, **context):
+        return self.export_bridge.export_obj(self.project, output_path, LevelExportOptions(dry_run=dry_run), **context)
 
     def add_blueprint(self, name: str = "Blueprint", blueprint_type: str = "Custom", template_resref: str = ""):
         blueprint = self.blueprint_service.add_blueprint(self.project, name, blueprint_type=blueprint_type, template_resref=template_resref)

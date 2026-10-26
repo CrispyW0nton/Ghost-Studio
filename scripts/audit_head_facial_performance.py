@@ -58,9 +58,9 @@ def _facial_frame_bounds(model: Any) -> tuple[
         }
         if not vertices or len(rows) != len(vertices) or not facial_slots:
             continue
-        selected = [
-            vertex
-            for vertex, row in zip(vertices, rows)
+        selected_indices = [
+            index
+            for index, row in enumerate(rows)
             if sum(
                 float(getattr(influence, "weight", 0.0) or 0.0)
                 for influence in list(getattr(row, "influences", ()) or ())
@@ -68,8 +68,16 @@ def _facial_frame_bounds(model: Any) -> tuple[
             )
             >= 0.08
         ]
-        if len(selected) < 20:
+        if len(selected_indices) < 20:
             continue
+        from src.core.characters.head_facial_transplant import (
+            _node_vertices_in_world,
+        )
+
+        world_vertices = _node_vertices_in_world(node)
+        if len(world_vertices) != len(vertices):
+            continue
+        selected = [world_vertices[index] for index in selected_indices]
         points = np.asarray(selected, dtype=np.float64)
         minimum = points.min(axis=0)
         maximum = points.max(axis=0)

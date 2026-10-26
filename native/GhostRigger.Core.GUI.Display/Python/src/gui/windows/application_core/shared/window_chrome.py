@@ -137,6 +137,28 @@ class WindowChromeMixin:
         self.export_full_module_fbx_action.triggered.connect(
             self._export_full_module_fbx,
         )
+        self.export_full_module_obj_action = QtGui.QAction(
+            "Export Full Module as One OBJ...",
+            self,
+        )
+        self.export_full_module_obj_action.setStatusTip(
+            "Export every room in the loaded module layout as one OBJ, "
+            "including all renderable geometry, materials, and textures"
+        )
+        self.export_full_module_obj_action.triggered.connect(
+            self._export_full_module_obj,
+        )
+        self.export_maya_room_module_obj_action = QtGui.QAction(
+            "Export Maya-Friendly Module (Room Objects)...",
+            self,
+        )
+        self.export_maya_room_module_obj_action.setStatusTip(
+            "Export the loaded module as one OBJ containing one positioned, "
+            "selectable mesh object per room"
+        )
+        self.export_maya_room_module_obj_action.triggered.connect(
+            self._export_maya_room_module_obj,
+        )
         self.export_clean_module_obj_action = QtGui.QAction(
             "Export Clean Full Map as OBJ...",
             self,
@@ -450,6 +472,8 @@ class WindowChromeMixin:
         file_menu.addAction(self.export_fbx_action)
         file_menu.addAction(self.export_selected_fbx_action)
         file_menu.addAction(self.export_full_module_fbx_action)
+        file_menu.addAction(self.export_full_module_obj_action)
+        file_menu.addAction(self.export_maya_room_module_obj_action)
         file_menu.addAction(self.export_clean_module_obj_action)
         file_menu.addAction(self.export_gltf_action)
         file_menu.addSeparator()

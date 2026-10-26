@@ -135,6 +135,9 @@ class MainWindowLayoutMixin:
         self.body_attachment_panel.saveBuildRequested.connect(self._handle_bas_save_build_requested)
         self.body_attachment_panel.exportComposedRequested.connect(self._handle_bas_export_composed_requested)
         self.body_attachment_panel.modeChanged.connect(self._handle_bas_mode_changed)
+        self.body_attachment_panel.characterPresetRequested.connect(
+            self._handle_bas_character_preset_requested
+        )
         # Populate the slot combos with every attachable game model once the
         # game library is configured; the first slot click resolves it lazily.
         self.body_attachment_panel.slotSelected.connect(self._ensure_bas_attachment_catalog)

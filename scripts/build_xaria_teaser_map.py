@@ -1,11 +1,13 @@
 """Build the KOTOR II Xaria teaser encounter as a deterministic Map Studio candidate.
 
 The module intentionally reuses only assets from the user's installed KOTOR II
-library.  It does not stage or install anything.  The teaser owns private
-``xt_*`` creature/trigger/dialogue/script resources for the cinematic combat
-spine, then hands the proven encounter actor to the production ``xaria.dlg``
-recruitment flow.  Xaria's custom models, production dialogue/scripts, global
-2DA rows, and runtime patches remain explicit external dependencies.
+library.  It does not stage or install anything.  The emitted module carries
+the byte-verified production ``xar_*`` encounter spine accepted in PLCaa and
+hands its encounter actor to the production ``xaria.dlg`` recruitment flow.
+Legacy private ``xt_*`` authoring helpers remain available for historical test
+coverage but are excluded from the packed module.  Xaria's custom models,
+production dialogue/scripts, global 2DA rows, and runtime patches remain
+explicit external dependencies.
 """
 
 from __future__ import annotations
@@ -137,6 +139,47 @@ DIRECTOR_POWER_SCRIPT_RESREFS = (
     "kxar_d_ilight",
     "kxar_d_idrain",
 )
+PRODUCTION_XARIA_TEMPLATE = "xar_enc"
+PRODUCTION_XARIA_TAG = "Xaria_Encounter"
+PRODUCTION_WRAID_TEMPLATES = ("xar_nydak1", "xar_nydak2", "xar_nydak3")
+PRODUCTION_WRAID_TAGS = ("Xaria_Wraid_1", "Xaria_Wraid_2", "Xaria_Wraid_3")
+PRODUCTION_TRIGGER_TEMPLATE = "xar_introtrig"
+PRODUCTION_TRIGGER_TAG = "Xaria_Intro_Trigger"
+PRODUCTION_DIRECTOR_TEMPLATE = "xar_director"
+PRODUCTION_DIRECTOR_TAG = "Xaria_Director"
+PRODUCTION_TIMELINE_TEMPLATE = "xar_clock"
+PRODUCTION_TIMELINE_TAG = "Xaria_Timeline"
+PRODUCTION_CAMERA_DIALOGUE = "xar_cam"
+PRODUCTION_BLADE = "xaria_blade"
+PRODUCTION_SOUND_OBJECTS = (
+    ("kxar_mistsnd", "kxar_mistsnd"),
+    ("kxar_lightsnd", "kxar_lightsnd"),
+    ("kxar_drainsnd", "kxar_drainsnd"),
+)
+PRODUCTION_ENCOUNTER_NCS = (
+    "kxar_start",
+    "kxar_cam1",
+    "kxar_show",
+    "kxar_showfail",
+    "kxar_poll",
+    "kxar_finish",
+    "kxar_camend",
+    "kxar_heart",
+    "kxar_click",
+    "kxar_enddlg",
+    "kxar_wheart",
+    "kxar_wspell",
+    "kxar_wdeath",
+    "kxar_ai_atk",
+    "kxar_ai_blk",
+    "kxar_ai_dmg",
+    "kxar_ai_end",
+    "kxar_ai_per",
+    "kxar_cleanup",
+    "kxar_join",
+    "kxar_dlgack",
+    *DIRECTOR_POWER_SCRIPT_RESREFS,
+)
 ENCOUNTER_TRIGGER_POSITION = (-5.625, -22.25, 9.929297798)
 ENCOUNTER_TRIGGER_GEOMETRY = (
     (-13.375, -5.25, 0.079067814),
@@ -150,108 +193,46 @@ ENCOUNTER_PROXIMITY_METRES = 0.0
 ENCOUNTER_TRIGGER_MIN_ROUTE_COVERAGE_METRES = 8.0
 
 BUNDLED_ENCOUNTER_RESOURCES = (
-    {"resref": PRIVATE_XARIA_TEMPLATE, "type": "utc", "purpose": "Private cinematic Xaria template."},
-    {"resref": PRIVATE_WRAID_TEMPLATES[0], "type": "utc", "purpose": "Private Miststep target."},
-    {"resref": PRIVATE_WRAID_TEMPLATES[1], "type": "utc", "purpose": "Private Ichor Lightning target."},
-    {"resref": PRIVATE_WRAID_TEMPLATES[2], "type": "utc", "purpose": "Private Ichor Drain target."},
+    {"resref": PRODUCTION_XARIA_TEMPLATE, "type": "utc", "purpose": "Accepted production cinematic Xaria template."},
+    {"resref": PRODUCTION_WRAID_TEMPLATES[0], "type": "utc", "purpose": "Accepted production Miststep Nydak target."},
+    {"resref": PRODUCTION_WRAID_TEMPLATES[1], "type": "utc", "purpose": "Accepted production Ichor Lightning Nydak target."},
+    {"resref": PRODUCTION_WRAID_TEMPLATES[2], "type": "utc", "purpose": "Accepted production Ichor Drain Nydak target."},
     {
-        "resref": PRIVATE_TRIGGER_TEMPLATE,
+        "resref": PRODUCTION_TRIGGER_TEMPLATE,
         "type": "utt",
-        "purpose": "Private encounter trigger retained until all three deaths are confirmed.",
+        "purpose": "Accepted production encounter trigger.",
     },
     {
-        "resref": PRIVATE_DIRECTOR_TEMPLATE,
+        "resref": PRODUCTION_DIRECTOR_TEMPLATE,
         "type": "utp",
-        "purpose": "Private neutral/static cutscene-camera director.",
+        "purpose": "Accepted production cutscene-camera director.",
     },
     {
-        "resref": PRIVATE_DIALOGUE,
+        "resref": PRODUCTION_TIMELINE_TEMPLATE,
+        "type": "utp",
+        "purpose": "Accepted production combat timeline owner.",
+    },
+    {
+        "resref": PRODUCTION_CAMERA_DIALOGUE,
         "type": "dlg",
-        "purpose": "Three-camera death-gated combat timeline.",
+        "purpose": "Accepted production three-camera combat controller.",
     },
-    {"resref": PRIVATE_BLADE, "type": "uti", "purpose": "Private Xaria's Blade copy."},
-    {
-        "resref": "xt_start",
-        "type": "ncs",
-        "purpose": "Validate trigger entry and dispatch the idempotent encounter starter.",
-    },
-    {
-        "resref": "xt_begin",
-        "type": "ncs",
-        "purpose": "Start the retry-safe encounter controller shared by trigger and click.",
-    },
-    {
-        "resref": "xt_click",
-        "type": "ncs",
-        "purpose": "Start the encounter on click or reopen the guarded production dialogue after combat.",
-    },
-    {
-        "resref": "xt_b1",
-        "type": "ncs",
-        "purpose": "Resolve Miststep during the held camera-111 hero beat and kill Wraid 1.",
-    },
-    {
-        "resref": "xt_b2",
-        "type": "ncs",
-        "purpose": "Resolve Ichor Lightning immediately during camera 112 and kill Wraid 2.",
-    },
-    {
-        "resref": "xt_b3",
-        "type": "ncs",
-        "purpose": "Resolve Ichor Drain immediately during camera 113 and prove all deaths.",
-    },
-    {
-        "resref": "xt_dead",
-        "type": "ncs",
-        "purpose": "Confirm each scripted death and release the active beat latch.",
-    },
-    {
-        "resref": "xt_c1done",
-        "type": "ncs",
-        "purpose": "Advance the silent director dialogue after Wraid 1 is proven dead.",
-    },
-    {
-        "resref": "xt_c2done",
-        "type": "ncs",
-        "purpose": "Advance the silent director dialogue after Wraids 1 and 2 are proven dead.",
-    },
-    {
-        "resref": "xt_c3done",
-        "type": "ncs",
-        "purpose": "End the silent director dialogue after all three deaths are proven.",
-    },
-    {
-        "resref": "xt_camend",
-        "type": "ncs",
-        "purpose": "Perform the once-only production dialogue handoff after camera 113 ends naturally.",
-    },
-    {
-        "resref": "xt_post",
-        "type": "ncs",
-        "purpose": "Idempotently hand a completed encounter into the production Xaria dialogue.",
-    },
-    {
-        "resref": "xt_enddlg",
-        "type": "ncs",
-        "purpose": "Finish production dialogue, open the recruited slot, and retire the encounter actor.",
-    },
-    {
-        "resref": "xt_cleanup",
-        "type": "ncs",
-        "purpose": "Destroy only the proven private encounter origin after successful recruitment.",
-    },
-    {
-        "resref": "xt_hb",
-        "type": "ncs",
-        "purpose": "Recover an interrupted combat beat and clean up after recruitment.",
-    },
+    {"resref": PRODUCTION_BLADE, "type": "uti", "purpose": "Accepted Xaria's Blade item."},
+    *(
+        {
+            "resref": resref,
+            "type": "uts",
+            "purpose": "Accepted production positional effect-sound anchor.",
+        }
+        for resref, _tag in PRODUCTION_SOUND_OBJECTS
+    ),
     *(
         {
             "resref": resref,
             "type": "ncs",
-            "purpose": "Bundled production-effect director wrapper.",
+            "purpose": "Accepted compiled production encounter script.",
         }
-        for resref in DIRECTOR_POWER_SCRIPT_RESREFS
+        for resref in PRODUCTION_ENCOUNTER_NCS
     ),
 )
 
@@ -826,8 +807,8 @@ TERRAIN_DRESSING = (
 ACTOR_MARKERS = (
     {
         "id": "xaria_encounter",
-        "template_resref": PRIVATE_XARIA_TEMPLATE,
-        "tag": PRIVATE_XARIA_TAG,
+        "template_resref": PRODUCTION_XARIA_TEMPLATE,
+        "tag": PRODUCTION_XARIA_TAG,
         "position": (0.0, -18.0, 9.919661),
         "bearing": 0.0,
         "zone_id": "hero_clearing",
@@ -839,8 +820,8 @@ ACTOR_MARKERS = (
     },
     {
         "id": "wraid_1",
-        "template_resref": PRIVATE_WRAID_TEMPLATES[0],
-        "tag": PRIVATE_WRAID_TAGS[0],
+        "template_resref": PRODUCTION_WRAID_TEMPLATES[0],
+        "tag": PRODUCTION_WRAID_TAGS[0],
         "position": (5.0, -21.0, 10.013909),
         "bearing": math.pi,
         "zone_id": "hero_clearing",
@@ -851,8 +832,8 @@ ACTOR_MARKERS = (
     },
     {
         "id": "wraid_2",
-        "template_resref": PRIVATE_WRAID_TEMPLATES[1],
-        "tag": PRIVATE_WRAID_TAGS[1],
+        "template_resref": PRODUCTION_WRAID_TEMPLATES[1],
+        "tag": PRODUCTION_WRAID_TAGS[1],
         "position": (5.0, -17.0, 9.974767),
         "bearing": math.pi,
         "zone_id": "hero_clearing",
@@ -863,8 +844,8 @@ ACTOR_MARKERS = (
     },
     {
         "id": "wraid_3",
-        "template_resref": PRIVATE_WRAID_TEMPLATES[2],
-        "tag": PRIVATE_WRAID_TAGS[2],
+        "template_resref": PRODUCTION_WRAID_TEMPLATES[2],
+        "tag": PRODUCTION_WRAID_TAGS[2],
         "position": (3.0, -13.0, 9.981651),
         "bearing": -2.2,
         "zone_id": "hero_clearing",
@@ -973,7 +954,7 @@ SHOWCASE_BEATS = (
     {
         "order": 1,
         "power": "Miststep: Ambush",
-        "target_tag": PRIVATE_WRAID_TAGS[0],
+        "target_tag": PRODUCTION_WRAID_TAGS[0],
         "arrival": (7.0, -23.0, 10.049328),
         "arrival_clearance_m": 1.75,
         "camera_role": "miststep_ambush",
@@ -982,14 +963,14 @@ SHOWCASE_BEATS = (
     {
         "order": 2,
         "power": "Ichor Lightning",
-        "target_tag": PRIVATE_WRAID_TAGS[1],
+        "target_tag": PRODUCTION_WRAID_TAGS[1],
         "camera_role": "ichor_lightning_hero",
         "unobstructed_sightline": True,
     },
     {
         "order": 3,
         "power": "Ichor Drain",
-        "target_tag": PRIVATE_WRAID_TAGS[2],
+        "target_tag": PRODUCTION_WRAID_TAGS[2],
         "camera_role": "ichor_drain_profile",
         "unobstructed_sightline": True,
     },
@@ -1061,15 +1042,18 @@ def _validate_prepared_candidate_manifest(root: Path) -> None:
         raise RuntimeError(
             f"Prepared Xaria stage-manifest is unreadable: {manifest_path}"
         ) from exc
+    valid_stage_state = (
+        (manifest.get("installed") is False and manifest.get("install_state") == "not_requested")
+        or (manifest.get("installed") is True and manifest.get("install_state") == "installed")
+    ) if isinstance(manifest, dict) else False
     if (
         not isinstance(manifest, dict)
         or manifest.get("operation") != "add_xaria_plcaa_encounter"
-        or manifest.get("installed") is not False
-        or manifest.get("install_state") != "not_requested"
+        or not valid_stage_state
     ):
         raise RuntimeError(
-            "Prepared Xaria stage-manifest must be an uninstalled "
-            "add_xaria_plcaa_encounter candidate."
+            "Prepared Xaria stage-manifest must be a verified uninstalled or "
+            "installed add_xaria_plcaa_encounter candidate."
         )
 
     module = manifest.get("module")
@@ -2759,6 +2743,41 @@ def _private_encounter_resources(
     return tuple(resources)
 
 
+def _production_encounter_resources(
+    game_dir: Path,
+    *,
+    dependency_override: Path | None = None,
+) -> tuple[tuple[str, str, bytes], ...]:
+    """Copy the accepted PLCaa encounter spine without rewriting its bytes."""
+
+    override = (
+        dependency_override.resolve()
+        if dependency_override is not None
+        else game_dir / "Override"
+    )
+    resources: list[tuple[str, str, bytes]] = []
+    missing: list[str] = []
+    for row in BUNDLED_ENCOUNTER_RESOURCES:
+        resref = str(row["resref"])
+        restype = str(row["type"])
+        path = override / f"{resref}.{restype}"
+        if not path.is_file():
+            missing.append(path.name)
+            continue
+        payload = path.read_bytes()
+        if restype == "ncs" and not payload.startswith(b"NCS V1.0"):
+            raise RuntimeError(
+                f"Accepted production script is not executable NCS: {path}"
+            )
+        resources.append((resref, restype, payload))
+    if missing:
+        raise FileNotFoundError(
+            "The selected Xaria production snapshot is missing encounter resources: "
+            + ", ".join(missing)
+        )
+    return tuple(resources)
+
+
 def _external_dependency_evidence(
     game_dir: Path,
     *,
@@ -2921,7 +2940,7 @@ def build_spatial_plan() -> Any:
                 "clearance_radius": 0.10,
             },
             label="Xaria Encounter Start",
-            asset_ref=PRIVATE_TRIGGER_TEMPLATE,
+            asset_ref=PRODUCTION_TRIGGER_TEMPLATE,
             allow_path_overlap=True,
         ),
         _placement_intent(
@@ -3146,6 +3165,7 @@ def _authored_gameplay_placements() -> Any:
         AuthoredCreatureInstance,
         AuthoredGameplayPlacement,
         AuthoredPlaceableInstance,
+        AuthoredSoundInstance,
         AuthoredTriggerInstance,
         ModuleEntryPoint,
     )
@@ -3163,8 +3183,8 @@ def _authored_gameplay_placements() -> Any:
     )
     triggers = (
         AuthoredTriggerInstance(
-            template_resref=PRIVATE_TRIGGER_TEMPLATE,
-            tag=PRIVATE_TRIGGER_TAG,
+            template_resref=PRODUCTION_TRIGGER_TEMPLATE,
+            tag=PRODUCTION_TRIGGER_TAG,
             position=ENCOUNTER_TRIGGER_POSITION,
             geometry=ENCOUNTER_TRIGGER_GEOMETRY,
             instance_id="xartease_encounter_start",
@@ -3201,11 +3221,26 @@ def _authored_gameplay_placements() -> Any:
     )
     placeables = (
         AuthoredPlaceableInstance(
-            template_resref=PRIVATE_DIRECTOR_TEMPLATE,
-            tag=PRIVATE_DIRECTOR_TAG,
+            template_resref=PRODUCTION_DIRECTOR_TEMPLATE,
+            tag=PRODUCTION_DIRECTOR_TAG,
             position=ENCOUNTER_TRIGGER_POSITION,
             instance_id="xartease_invisible_dialogue_director",
         ),
+        AuthoredPlaceableInstance(
+            template_resref=PRODUCTION_TIMELINE_TEMPLATE,
+            tag=PRODUCTION_TIMELINE_TAG,
+            position=ENCOUNTER_TRIGGER_POSITION,
+            instance_id="xartease_invisible_combat_timeline",
+        ),
+    )
+    sounds = tuple(
+        AuthoredSoundInstance(
+            template_resref=template_resref,
+            tag=tag,
+            position=HERO_CLEARING_CENTER,
+            instance_id=f"xartease_{template_resref}",
+        )
+        for template_resref, tag in PRODUCTION_SOUND_OBJECTS
     )
     facing = math.atan2(
         ROUTE_POINTS[1][1] - ROUTE_POINTS[0][1],
@@ -3219,6 +3254,7 @@ def _authored_gameplay_placements() -> Any:
         ),
         creatures=creatures,
         triggers=triggers,
+        sounds=sounds,
         cameras=cameras,
         placeables=placeables,
         metadata={
@@ -3439,7 +3475,7 @@ def _showcase_lane_audit() -> tuple[dict[str, Any], ...]:
     targets = {
         row["tag"]: tuple(float(value) for value in row["position"])
         for row in ACTOR_MARKERS
-        if str(row["tag"]).startswith("XT_Wraid_")
+        if str(row["tag"]).startswith("Xaria_Wraid_")
     }
     rows: list[dict[str, Any]] = []
     for beat in SHOWCASE_BEATS:
@@ -3581,10 +3617,10 @@ def _draw_blueprint(wok: Any, path: Path) -> None:
         )
 
     actor_colors = {
-        PRIVATE_XARIA_TAG: (74, 255, 111, 255),
-        PRIVATE_WRAID_TAGS[0]: (245, 174, 86, 255),
-        PRIVATE_WRAID_TAGS[1]: (245, 174, 86, 255),
-        PRIVATE_WRAID_TAGS[2]: (245, 174, 86, 255),
+        PRODUCTION_XARIA_TAG: (74, 255, 111, 255),
+        PRODUCTION_WRAID_TAGS[0]: (245, 174, 86, 255),
+        PRODUCTION_WRAID_TAGS[1]: (245, 174, 86, 255),
+        PRODUCTION_WRAID_TAGS[2]: (245, 174, 86, 255),
         "Xaria_Miststep_Arrival": (94, 255, 172, 200),
     }
     for actor in ACTOR_MARKERS:
@@ -3743,7 +3779,7 @@ def _manual_workflow() -> str:
     )
     return f"""# Ghost Studio manual workflow — Xaria teaser map
 
-This is the complete UI recreation path for the candidate. The grove uses the connected KOTOR II library; the private encounter resources are bundled, while Xaria's model/2DA/runtime patch remains an explicit external prerequisite. The MOD is not standalone.
+This is the complete UI recreation path for the candidate. The grove uses the connected KOTOR II library and bundles the exact accepted PLCaa production encounter spine. Xaria's models, full recruitment dialogue, 2DA rows, voice files, and runtime patches remain explicit external prerequisites. The MOD is not standalone.
 
 ## Create the map
 
@@ -3782,48 +3818,30 @@ Add a subtle green hero-clearing point light and a dim cool arrival fill. The ga
 
 ## Encounter placements
 
-1. Place private creature `{PRIVATE_XARIA_TEMPLATE}` / `{PRIVATE_XARIA_TAG}` at `{ACTOR_MARKERS[0]["position"]}`.
-2. Place `{PRIVATE_WRAID_TEMPLATES[0]}`, `{PRIVATE_WRAID_TEMPLATES[1]}`, and `{PRIVATE_WRAID_TEMPLATES[2]}` at their manifest positions.
-3. Place `{PRIVATE_TRIGGER_TEMPLATE}` at `{ENCOUNTER_TRIGGER_POSITION}` with
+1. Place production creature `{PRODUCTION_XARIA_TEMPLATE}` / `{PRODUCTION_XARIA_TAG}` at `{ACTOR_MARKERS[0]["position"]}`.
+2. Place `{PRODUCTION_WRAID_TEMPLATES[0]}`, `{PRODUCTION_WRAID_TEMPLATES[1]}`, and `{PRODUCTION_WRAID_TEMPLATES[2]}` at their manifest positions.
+3. Place `{PRODUCTION_TRIGGER_TEMPLATE}` / `{PRODUCTION_TRIGGER_TAG}` at `{ENCOUNTER_TRIGGER_POSITION}` with
    local geometry `{ENCOUNTER_TRIGGER_GEOMETRY}`. It must span the full final
    corridor, not merely touch a route corner.
-4. Place the bundled `{PRIVATE_DIRECTOR_TEMPLATE}` placeable beside the
-   trigger at `{ENCOUNTER_TRIGGER_POSITION}`. It is a neutral/static clone of
-   stock `plc_invisible` with tag `{PRIVATE_DIRECTOR_TAG}` and Conversation
-   `{PRIVATE_DIALOGUE}`. It owns the DLG so Xaria remains free to animate and
-   fight, matching the K1 Jolee encounter architecture.
-5. Leave the reserved Miststep arrival pocket at `{SHOWCASE_BEATS[0]["arrival"]}` completely clear.
-6. Build `xt_dlg` as three silent, unskippable camera entries `111`, `112`,
-   and `113`. Each entry polls its confirmed-death condition every
-   `{PRIVATE_CAMERA_POLL_SECONDS}` second, loops while false, and
-   dispatches only its own idempotent beat after
-   `{PRIVATE_CAMERA_PREROLL_SECONDS:.2f}` seconds of pre-roll. The proof-7
-   reply under camera `113` has no child, so the DLG ends naturally and
-   `xt_camend` performs the guarded one-time `xt_post` handoff. Click and
-   heartbeat recovery must reacquire this director conversation instead of
-   launching combat under the gameplay camera.
-7. Leave every private wraid OnDeath script blank. The three idempotent beat
-   scripts play readable `cspasm` reactions, clear Plot and MinOneHP, apply
-   lethal universal damage so native `cdie` can play, and call `xt_dead`
-   themselves. `xt_dead` proves the death and releases the beat latch; the DLG
-   owns every camera transition and next-beat dispatch. Each beat uses the
-   bundled production-effect wrapper, but wrapper rejection selects the same
-   authored VFX fallback rather than blocking cleanup.
-8. Keep `xt_hb` idempotent: state `1` retries only the first unfinished beat;
-   state `2` retries only the guarded post-combat handoff. It never starts the
-   encounter by distance. `xt_click` invokes the same guarded start path,
-   produces a defined response while running, and reopens `xaria.dlg` after a
-   declined recruitment.
-9. Let production `kxar_join` own recruitment. `xt_enddlg` opens the proven
-   extended slot and retires only the tagged private origin after global state
-   `KPM_XARIA_STATE` reaches `3`.
+4. Place `{PRODUCTION_DIRECTOR_TEMPLATE}` / `{PRODUCTION_DIRECTOR_TAG}` and
+   `{PRODUCTION_TIMELINE_TEMPLATE}` / `{PRODUCTION_TIMELINE_TAG}` beside the
+   trigger at `{ENCOUNTER_TRIGGER_POSITION}`. The director owns
+   `{PRODUCTION_CAMERA_DIALOGUE}`; the separate timeline remains free to run
+   the accepted `kxar_show` sequence.
+5. Place the three sound anchors `{PRODUCTION_SOUND_OBJECTS}` at
+   `{HERO_CLEARING_CENTER}`.
+6. Leave the reserved Miststep arrival pocket at `{SHOWCASE_BEATS[0]["arrival"]}` completely clear.
+7. Copy the bundled resources byte-for-byte from the accepted production
+   candidate. Do not rename tags, clone the UTCs, or recompile the NCS files.
+8. Let production `kxar_join`, `kxar_cleanup`, and `kxar_enddlg` own recruitment
+   and retirement of the encounter actor.
 
 ## Cameras
 
 {camera_rows}
 
-Cameras `111`–`113` are the complete private combat sequence. Camera `114`
-remains a production-dialogue marker only and is never entered by `xt_dlg`.
+Cameras `111`–`113` are the complete accepted combat sequence. Camera `114`
+remains a production-dialogue marker only and is never entered by `xar_cam`.
 Production `xaria.dlg` owns its dialogue close-ups and reverse shots. Camera
 orientation is GFF `w,x,y,z`, and pitch is stored in degrees.
 
@@ -3848,8 +3866,8 @@ describe the same threshold.
 4. Save `{MODULE_ROOT}.kmap`.
 5. Export a candidate MOD without installing it.
 6. Inspect ARE/GIT/IFO/LYT/PTH/VIS/WOK readback and confirm all three creature
-   targets, the stock invisible director, six correctly encoded cameras, the
-   exact non-looping DLG graph, and eight exported stock lightmap channels.
+   targets, director, timeline, three sound anchors, six correctly encoded
+   cameras, the exact accepted DLG graph, and eight stock lightmap channels.
 
 ## Remaining retail gates
 
@@ -3859,8 +3877,8 @@ describe the same threshold.
 - Confirm cameras switch with Miststep, Lightning, and Drain; each beat kills
   its own target before the next camera, then production dialogue begins.
 - Confirm a successful join fills the reported extended slot, opens party
-  selection, and permanently removes only the old `XT_Xaria` origin.
-- Repeat with production Xaria already recruited; the private teaser may run
+  selection, and permanently removes only the old `Xaria_Encounter` origin.
+- Repeat with production Xaria already recruited; the encounter may run
   but must never downgrade committed global state `3`.
 - Confirm Xaria's hair simulation, front strands, face animation, green eyes, mist footsteps, and dialogue close-ups.
 - Confirm the return trigger arrives in stock `402dxn`.
@@ -3890,6 +3908,7 @@ def _build_once(
     from pykotor.resource.generics.dlg import read_dlg
     from pykotor.resource.generics.utc import read_utc
     from pykotor.resource.generics.utp import read_utp
+    from pykotor.resource.generics.uts import read_uts
     from pykotor.resource.generics.utt import read_utt
     from src.core.assets.resource_manager import ResourceManager
     from src.core.modules.authored_module_export import (
@@ -3923,7 +3942,7 @@ def _build_once(
             f"{trigger_route_coverage:.3f}m < "
             f"{ENCOUNTER_TRIGGER_MIN_ROUTE_COVERAGE_METRES:.3f}m."
         )
-    private_resources = _private_encounter_resources(
+    private_resources = _production_encounter_resources(
         game_dir,
         dependency_override=dependency_override,
     )
@@ -4002,10 +4021,10 @@ def _build_once(
         notes=tuple(authored.notes)
         + (
             "Separate from plcaa; do not replace the recruitment regression fixture.",
-            "Private xt_* encounter templates, dialogue, state, and scripts are bundled in this MOD.",
-            "Xaria production dialogue/recruitment scripts, models, 2DA rows, and runtime patches remain external dependencies.",
+            "The exact accepted PLCaa xar_*/kxar_* encounter spine is bundled in this MOD without byte rewriting.",
+            "Xaria's full recruitment dialogue, models, global 2DA rows, runtime hooks, and voice files remain external dependencies.",
             "Three-beat order: Miststep Ambush, Ichor Lightning, Ichor Drain.",
-            "A stock invisible placeable owns a cyclic silent three-camera DLG. Cameras 111, 112, and 113 poll confirmed death masks every one second; each camera dispatches only its own beat after 1.25 seconds of pre-roll. Camera 113's proof-7 reply ends naturally and xt_camend performs the guarded production handoff. Camera marker 114 remains available to production dialogue but is absent from the private combat graph.",
+            "The accepted production director and timeline objects run xar_cam across cameras 111, 112, and 113, then hand off once to xaria.dlg.",
             "The untouched 402dxna room keeps its eight stock 402dxna_lm0 channels so retail rendering does not collapse into green fog over black geometry.",
             "Visual terrain-kit dressing has zero WOK faces and cannot alter collision.",
         ),
@@ -4092,41 +4111,8 @@ def _build_once(
     missing_private_keys = expected_private_keys - packaged_resource_keys
     if missing_private_keys:
         raise RuntimeError(
-            f"MOD package omitted private teaser resources: {sorted(missing_private_keys)}"
+            f"MOD package omitted production encounter resources: {sorted(missing_private_keys)}"
         )
-    production_resource_keys = {
-        (
-            Path(str(row["name"])).stem.casefold(),
-            Path(str(row["name"])).suffix.removeprefix(".").casefold(),
-        )
-        for row in EXTERNAL_XARIA_FILES
-    }
-    leaked_production_keys = production_resource_keys & packaged_resource_keys
-    if leaked_production_keys:
-        raise RuntimeError(
-            "Private teaser package leaked production resources: "
-            f"{sorted(leaked_production_keys)}"
-        )
-    private_source_text = "\n".join(PRIVATE_SCRIPT_SOURCES.values())
-    if any(
-        token in private_source_text
-        for token in ("AddAvailableNPC", "RemoveAvailableNPC")
-    ):
-        raise RuntimeError(
-            "Private teaser scripts bypass the production recruitment owner."
-        )
-    if any(
-        token not in private_source_text
-        for token in (
-            PRODUCTION_GLOBAL_STATE,
-            PRODUCTION_GLOBAL_SLOT,
-            f'"{PRODUCTION_DIALOGUE}"',
-        )
-    ):
-        raise RuntimeError(
-            "Private teaser scripts lost the guarded production dialogue handoff."
-        )
-
     git_path = source_dir / f"{MODULE_ROOT}.git"
     git = read_gff(git_path.read_bytes()).root
     module_ifo = read_gff((source_dir / "module.ifo").read_bytes()).root
@@ -4141,6 +4127,7 @@ def _build_once(
     triggers = tuple(git.acquire("TriggerList", ()) or ())
     cameras = tuple(git.acquire("CameraList", ()) or ())
     placeables = tuple(git.acquire("Placeable List", ()) or ())
+    sounds = tuple(git.acquire("SoundList", ()) or ())
     creature_resrefs = sorted(
         str(item.acquire("TemplateResRef", "") or "").lower() for item in creatures
     )
@@ -4185,6 +4172,9 @@ def _build_once(
         }
     placeable_resrefs = sorted(
         str(item.acquire("TemplateResRef", "") or "").lower() for item in placeables
+    )
+    sound_resrefs = sorted(
+        str(item.acquire("TemplateResRef", "") or "").lower() for item in sounds
     )
     camera_rows = {
         int(item.acquire("CameraID", 0) or 0): item
@@ -4267,6 +4257,7 @@ def _build_once(
         "creature_resrefs": creature_resrefs,
         "trigger_resrefs": trigger_resrefs,
         "placeable_resrefs": placeable_resrefs,
+        "sound_resrefs": sound_resrefs,
         "camera_count": len(cameras),
         "camera_ids": sorted(int(item.acquire("CameraID", 0) or 0) for item in cameras),
         "camera_rows": camera_readback,
@@ -4277,159 +4268,131 @@ def _build_once(
         "parsed_wok": list(export.package_verification.parsed_wok),
     }
     required_creatures = {
-        PRIVATE_XARIA_TEMPLATE,
-        *PRIVATE_WRAID_TEMPLATES,
+        PRODUCTION_XARIA_TEMPLATE,
+        *PRODUCTION_WRAID_TEMPLATES,
     }
     if not required_creatures.issubset(creature_resrefs):
         raise RuntimeError(
             f"GIT readback missed creatures: {required_creatures - set(creature_resrefs)}"
         )
-    if {PRIVATE_TRIGGER_TEMPLATE, "newtransition"} - set(trigger_resrefs):
+    if {PRODUCTION_TRIGGER_TEMPLATE, "newtransition"} - set(trigger_resrefs):
         raise RuntimeError("GIT readback missed the encounter or exit trigger.")
-    if placeable_resrefs != [PRIVATE_DIRECTOR_TEMPLATE]:
-        raise RuntimeError(
-            "GIT readback lost the private Jolee-style dialogue director."
-        )
-    private_director = read_utp(
-        (source_dir / f"{PRIVATE_DIRECTOR_TEMPLATE}.utp").read_bytes()
-    )
-    if (
-        str(private_director.tag) != PRIVATE_DIRECTOR_TAG
-        or str(private_director.conversation).casefold() != PRIVATE_DIALOGUE
-        or int(private_director.faction_id) != 5
-        or not bool(private_director.static)
-        or bool(private_director.useable)
+    if placeable_resrefs != sorted(
+        (PRODUCTION_DIRECTOR_TEMPLATE, PRODUCTION_TIMELINE_TEMPLATE)
     ):
         raise RuntimeError(
-            "Private director lost its unique tag, dialogue, neutral/static state, or invisibility contract."
+            "GIT readback lost the production director or timeline owner."
         )
+    if sound_resrefs != sorted(template for template, _tag in PRODUCTION_SOUND_OBJECTS):
+        raise RuntimeError("GIT readback lost a production effect-sound anchor.")
+    production_director = read_utp(
+        (source_dir / f"{PRODUCTION_DIRECTOR_TEMPLATE}.utp").read_bytes()
+    )
+    if (
+        str(production_director.tag) != PRODUCTION_DIRECTOR_TAG
+        or str(production_director.conversation).casefold()
+        != PRODUCTION_CAMERA_DIALOGUE
+        or not bool(production_director.static)
+        or bool(production_director.useable)
+    ):
+        raise RuntimeError(
+            "Production director lost its tag, dialogue, or static/invisible contract."
+        )
+    production_timeline = read_utp(
+        (source_dir / f"{PRODUCTION_TIMELINE_TEMPLATE}.utp").read_bytes()
+    )
+    if (
+        str(production_timeline.tag) != PRODUCTION_TIMELINE_TAG
+        or str(production_timeline.conversation)
+        or not bool(production_timeline.static)
+        or bool(production_timeline.useable)
+    ):
+        raise RuntimeError("Production timeline lost its inert placeable contract.")
+    for template_resref, expected_tag in PRODUCTION_SOUND_OBJECTS:
+        sound = read_uts((source_dir / f"{template_resref}.uts").read_bytes())
+        if str(sound.tag) != expected_tag:
+            raise RuntimeError(
+                f"Production sound {template_resref} lost tag {expected_tag}."
+            )
     if len(cameras) != len(CAMERA_MARKERS):
         raise RuntimeError(
             f"GIT readback found {len(cameras)} cameras, expected {len(CAMERA_MARKERS)}."
         )
-    private_xaria = read_utc(
-        (source_dir / f"{PRIVATE_XARIA_TEMPLATE}.utc").read_bytes()
+    production_xaria = read_utc(
+        (source_dir / f"{PRODUCTION_XARIA_TEMPLATE}.utc").read_bytes()
     )
     if (
-        str(private_xaria.tag) != PRIVATE_XARIA_TAG
-        or str(private_xaria.conversation).casefold() != PRODUCTION_DIALOGUE
-        or not bool(private_xaria.interruptable)
-        or str(private_xaria.on_heartbeat).casefold() != "xt_hb"
-        or str(private_xaria.on_dialog).casefold() != "xt_click"
-        or str(private_xaria.on_end_dialog).casefold() != "xt_enddlg"
+        str(production_xaria.tag) != PRODUCTION_XARIA_TAG
+        or int(production_xaria.appearance_id) != 725
+        or not bool(production_xaria.interruptable)
+        or not bool(production_xaria.plot)
+        or not bool(production_xaria.min1_hp)
+        or str(production_xaria.on_heartbeat).casefold() != "kxar_heart"
+        or str(production_xaria.on_dialog).casefold() != "kxar_click"
+        or str(production_xaria.on_end_dialog).casefold() != "kxar_enddlg"
     ):
         raise RuntimeError(
-            "Private Xaria UTC lost its tag/interruptible/watchdog/click/end-dialog handoff contract."
+            "Production Xaria UTC lost its accepted appearance/event contract."
         )
-    private_wraids = {
+    production_wraids = {
         resref: read_utc((source_dir / f"{resref}.utc").read_bytes())
-        for resref in PRIVATE_WRAID_TEMPLATES
+        for resref in PRODUCTION_WRAID_TEMPLATES
     }
-    if any(not bool(wraid.interruptable) for wraid in private_wraids.values()):
+    if any(
+        int(wraid.appearance_id) != 726
+        or not bool(wraid.interruptable)
+        or str(wraid.on_heartbeat).casefold() != "kxar_wheart"
+        or str(wraid.on_spell).casefold() != "kxar_wspell"
+        or str(wraid.on_death).casefold() != "kxar_wdeath"
+        for wraid in production_wraids.values()
+    ):
         raise RuntimeError(
-            "Private wraids must remain interruptible so their scripted combat queues can start."
+            "Production Nydak UTCs lost their accepted appearance/event contract."
         )
-    if any(str(wraid.on_death) for wraid in private_wraids.values()):
+    if {
+        str(production_wraids[resref].tag)
+        for resref in PRODUCTION_WRAID_TEMPLATES
+    } != set(PRODUCTION_WRAID_TAGS):
         raise RuntimeError(
-            "Private wraids must not gate combat progression through an OnDeath script."
+            "Production Nydak UTCs lost their accepted encounter tags."
         )
-    _require_private_faction_contract(
-        {
-            PRIVATE_XARIA_TEMPLATE: int(private_xaria.faction_id),
-            **{
-                resref: int(private_wraids[resref].faction_id)
-                for resref in private_wraids
-            },
-        }
+    production_trigger = read_utt(
+        (source_dir / f"{PRODUCTION_TRIGGER_TEMPLATE}.utt").read_bytes()
     )
-    private_trigger = read_utt(
-        (source_dir / f"{PRIVATE_TRIGGER_TEMPLATE}.utt").read_bytes()
+    if (
+        str(production_trigger.tag) != PRODUCTION_TRIGGER_TAG
+        or str(production_trigger.on_enter).casefold() != "kxar_start"
+    ):
+        raise RuntimeError("Production trigger does not dispatch kxar_start.")
+    production_camera_dialogue = read_dlg(
+        (source_dir / f"{PRODUCTION_CAMERA_DIALOGUE}.dlg").read_bytes()
     )
-    if str(private_trigger.on_enter).casefold() != "xt_start":
-        raise RuntimeError("Private teaser trigger does not reference xt_start.")
-    private_dialogue = read_dlg(
-        (source_dir / f"{PRIVATE_DIALOGUE}.dlg").read_bytes()
-    )
-    dialogue_entries = list(private_dialogue.all_entries(as_sorted=True))
-    dialogue_replies = list(private_dialogue.all_replies(as_sorted=True))
-    dialogue_root = (
-        private_dialogue.starters[0].node
-        if len(private_dialogue.starters) == 1
-        else None
-    )
+    dialogue_entries = list(production_camera_dialogue.all_entries(as_sorted=True))
+    dialogue_replies = list(production_camera_dialogue.all_replies(as_sorted=True))
     dialogue_graph_ok = bool(
-        private_dialogue.skippable is False
-        and len(private_dialogue.starters) == 1
+        len(production_camera_dialogue.starters) == 1
         and len(dialogue_entries) == 3
-        and len(dialogue_replies) == 6
-        and str(private_dialogue.on_end).casefold() == "xt_camend"
-        and str(private_dialogue.on_abort).casefold() == "xt_camend"
-        and dialogue_root is dialogue_entries[0]
+        and len(dialogue_replies) == 3
+        and str(production_camera_dialogue.on_end).casefold() == "kxar_camend"
+        and str(production_camera_dialogue.on_abort).casefold() == "kxar_camend"
+        and production_camera_dialogue.starters[0].node is dialogue_entries[0]
         and [entry.camera_id for entry in dialogue_entries] == [111, 112, 113]
         and [entry.camera_angle for entry in dialogue_entries] == [6, 6, 6]
         and [str(entry.script1).casefold() for entry in dialogue_entries]
-        == ["xt_b1", "xt_b2", "xt_b3"]
-        and [entry.delay for entry in dialogue_entries]
-        == [PRIVATE_CAMERA_POLL_SECONDS] * 3
-        and all(len(entry.links) == 2 for entry in dialogue_entries)
-        and all(entry.text.stringref == -1 for entry in dialogue_entries)
-        and all(not entry.text.get(0, 0) for entry in dialogue_entries)
-        and all(reply.text.stringref == -1 for reply in dialogue_replies)
-        and all(not reply.text.get(0, 0) for reply in dialogue_replies)
-        and all(entry.unskippable for entry in dialogue_entries)
-        and all(reply.unskippable for reply in dialogue_replies)
-        and all(not str(entry.vo_resref) for entry in dialogue_entries)
-        and all(not str(reply.vo_resref) for reply in dialogue_replies)
-        and all(int(entry.sound_exists) == 0 for entry in dialogue_entries)
-        and all(int(reply.sound_exists) == 0 for reply in dialogue_replies)
-        and all(entry.plot_index == -1 for entry in dialogue_entries)
-        and all(reply.plot_index == -1 for reply in dialogue_replies)
-        and all(entry.plot_xp_percentage == 0.0 for entry in dialogue_entries)
-        and all(reply.plot_xp_percentage == 0.0 for reply in dialogue_replies)
+        == ["kxar_cam1", "", ""]
+        and [entry.delay for entry in dialogue_entries] == [3, 7, 8]
     )
-    if dialogue_graph_ok:
-        for stage, condition in enumerate(
-            ("xt_c1done", "xt_c2done", "xt_c3done")
-        ):
-            advance_link, hold_link = dialogue_entries[stage].links
-            advance_reply = dialogue_replies[stage * 2]
-            hold_reply = dialogue_replies[stage * 2 + 1]
-            dialogue_graph_ok = bool(
-                advance_link.node is advance_reply
-                and str(advance_link.active1).casefold() == condition
-                and advance_link.active1_not is False
-                and advance_link.is_child is False
-                and hold_link.node is hold_reply
-                and str(hold_link.active1).casefold() == condition
-                and hold_link.active1_not is True
-                and hold_link.is_child is False
-                and len(hold_reply.links) == 1
-                and hold_reply.links[0].node is dialogue_entries[stage]
-                and hold_reply.links[0].is_child is True
-                and (
-                    (
-                        stage < 2
-                        and len(advance_reply.links) == 1
-                        and advance_reply.links[0].node
-                        is dialogue_entries[stage + 1]
-                        and advance_reply.links[0].is_child is False
-                    )
-                    or (stage == 2 and not advance_reply.links)
-                )
-            )
-            if not dialogue_graph_ok:
-                break
     if not dialogue_graph_ok:
         raise RuntimeError(
-            "Private teaser DLG lost its cyclic three-camera death gate."
+            "Production camera DLG lost its accepted 111/112/113 timeline."
         )
     readback["dialogue"] = {
-        "skippable": private_dialogue.skippable,
+        "skippable": production_camera_dialogue.skippable,
         "entry_camera_ids": [entry.camera_id for entry in dialogue_entries],
         "entry_scripts": [str(entry.script1) for entry in dialogue_entries],
         "entry_delays": [entry.delay for entry in dialogue_entries],
-        "on_end_script": str(private_dialogue.on_end),
-        "on_abort_script": str(private_dialogue.on_abort),
+        "on_end_script": str(production_camera_dialogue.on_end),
+        "on_abort_script": str(production_camera_dialogue.on_abort),
         "silent_combat_entry_count": sum(
             entry.text.stringref == -1 and not entry.text.get(0, 0)
             for entry in dialogue_entries
@@ -4439,25 +4402,25 @@ def _build_once(
         "post_combat_voice_resrefs": [],
         "production_dialogue_resref": PRODUCTION_DIALOGUE,
         "voice_lookup": dict(TEASER_VOICE_LOOKUP),
-        "maximum_combat_timeline_seconds": PRIVATE_MAX_COMBAT_TIMELINE_SECONDS,
-        "dialogue_poll_seconds": PRIVATE_CAMERA_POLL_SECONDS,
+        "accepted_production_spine": True,
         "graph_ok": dialogue_graph_ok,
     }
     readback["encounter_schema"] = {
-        "version": PRIVATE_SCHEMA,
-        "states": {"waiting": 0, "running": 1, "finished": 2},
+        "version": "production-plcaa-20260806",
+        "states": {"waiting": 0, "running": 1, "finished": 2, "recruited": 3},
         "camera_owned_first_combat_beat": True,
         "camera_dialogue_owns_combat_timeline": True,
         "trigger_retained_until_finished": True,
-        "wraid_on_death_progression": False,
-        "heartbeat_proximity_start": False,
-        "beat_in_flight_latch": True,
+        "wraid_on_death_progression": True,
+        "heartbeat_start_recovery": True,
+        "production_dialogue_handoff": True,
+        "accepted_production_spine": True,
     }
     if any(
         not (source_dir / f"{resref}.ncs").read_bytes().startswith(b"NCS V1.0")
-        for resref in PRIVATE_SCRIPT_SOURCES
+        for resref in PRODUCTION_ENCOUNTER_NCS
     ):
-        raise RuntimeError("A private teaser director script did not compile to NCS.")
+        raise RuntimeError("An accepted production encounter script is not NCS.")
     private_resource_evidence = tuple(
         {
             "resref": resref,
@@ -4557,6 +4520,12 @@ def main() -> int:
                 },
                 "standalone": False,
                 "dependency_contract": {
+                    "bundled_production_resources": [
+                        dict(row) for row in BUNDLED_ENCOUNTER_RESOURCES
+                    ],
+                    "bundled_production_resource_evidence": list(
+                        first["private_resource_evidence"]
+                    ),
                     "bundled_private_resources": [
                         dict(row) for row in BUNDLED_ENCOUNTER_RESOURCES
                     ],
@@ -4571,11 +4540,14 @@ def main() -> int:
                     ),
                     "voice_lookup": dict(TEASER_VOICE_LOOKUP),
                     "production_recruitment_state_access": True,
-                    "production_resource_resrefs_bundled": [],
+                    "production_resource_resrefs_bundled": sorted(
+                        {str(row["resref"]) for row in BUNDLED_ENCOUNTER_RESOURCES}
+                    ),
                     "honesty": (
-                        "xartease owns its encounter state/director resources, but it is not "
-                        "standalone: Xaria models, global 2DA rows, runtime hooks, and the "
-                        "installed KOTOR II library remain required."
+                        "xartease bundles the exact accepted PLCaa encounter spine, but it "
+                        "is not standalone: Xaria models, the full recruitment dialogue, "
+                        "global 2DA rows, runtime hooks, voice files, and the installed "
+                        "KOTOR II library remain required."
                     ),
                 },
                 "separate_from_plcaa": True,
@@ -4619,7 +4591,7 @@ def main() -> int:
                     ),
                     "proximity_fallback_metres": ENCOUNTER_PROXIMITY_METRES,
                     "heartbeat_proximity_fallback_enabled": False,
-                    "click_fallback_script": "xt_click",
+                    "click_fallback_script": "kxar_click",
                     "walkmesh_vertices": list(
                         first["trigger_walkmesh_audit"]
                     ),
@@ -4657,7 +4629,7 @@ def main() -> int:
                     f"Install this non-standalone candidate, then warp {MODULE_ROOT}.",
                     "Confirm entry, both route legs, and the stock-Dxun exit.",
                     "Confirm Miststep Ambush, Ichor Lightning, and Ichor Drain fire in order.",
-                    "Enter once with production Xaria already recruited and prove the private teaser still starts without changing recruitment.",
+                    "Enter once with production Xaria already recruited and prove the encounter still starts without changing recruitment.",
                     "Confirm front/rear hair physics, emissive eyes, green mist, facial animation, and close-up framing.",
                 ],
             }
@@ -4667,6 +4639,12 @@ def main() -> int:
                 "module_root": MODULE_ROOT,
                 "game": SOURCE_GAME,
                 "standalone": False,
+                "bundled_production_resources": [
+                    dict(row) for row in BUNDLED_ENCOUNTER_RESOURCES
+                ],
+                "bundled_production_resource_evidence": list(
+                    first["private_resource_evidence"]
+                ),
                 "bundled_private_resources": [
                     dict(row) for row in BUNDLED_ENCOUNTER_RESOURCES
                 ],
@@ -4679,6 +4657,9 @@ def main() -> int:
                 ),
                 "voice_lookup": dict(TEASER_VOICE_LOOKUP),
                 "production_recruitment_state_access": True,
+                "production_resource_resrefs_bundled": sorted(
+                    {str(row["resref"]) for row in BUNDLED_ENCOUNTER_RESOURCES}
+                ),
                 "world_lighting": dict(WORLD_LIGHTING),
                 "entry_point": list(ENTRY_POINT),
                 "exit": {

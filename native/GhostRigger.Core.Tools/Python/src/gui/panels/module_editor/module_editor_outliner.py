@@ -99,14 +99,21 @@ class ModuleEditorOutliner(QtWidgets.QTreeWidget):
             if str(value or "").strip()
         }
         room_resrefs.update(primitive_rows_by_room)
+        source_labels = {
+            room.get("room_resref"): room.get("metadata", {}).get("source_metadata", {}).get("label")
+            for room in (project.extra_sections.get("authored_module") or {}).get("rooms", [])
+        }
         for room_resref in sorted(room_resrefs):
+            source_label = source_labels.get(room_resref)
             room_item = self._item(
-                room_resref,
+                str(source_label or room_resref),
                 f"authored_room:{room_resref}",
                 "authored_room",
                 type_text="Room",
                 editable=False,
             )
+            if source_label:
+                room_item.setToolTip(0, f"{source_label} ({room_resref})")
             room_item.setExpanded(True)
             authored_rooms.addChild(room_item)
             for row in sorted(

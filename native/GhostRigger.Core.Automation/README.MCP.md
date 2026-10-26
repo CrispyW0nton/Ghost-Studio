@@ -40,7 +40,19 @@ The legacy Ghostworks and KotorMCP routes are outside this narrow
 authentication boundary. Securing the spatial route does not make those
 legacy routes trusted or production-forwardable.
 
-## Native boundary
+## Saved whole-level export through KotorMCP
+
+`python scripts/mcp/start_kotormcp_stdio.py` starts the broad local stdio server.
+Its `ghoststudio_export_level` tool exports a saved KMAP to one assembled static
+FBX or OBJ using the shared Core.IO exporter. Required arguments are absolute
+`kmap_path`, `output_path` and matching KOTOR `game_dir`. Optional `asset_dir`
+supplies custom resources; `overwrite` defaults to false. The tool protects the
+game directory, including redirected texture folders, reports real output size
+and SHA-256, and returns MCP `isError` on failure. It does not access unsaved
+scene state or control the desktop. Restart/reconnect the MCP client after an
+update to refresh its catalog. See `docs/level_scene_export.md` for examples.
+
+## Native package boundary
 
 - Bridge method: C ABI DLL.
 - C++ owns Phase 1 module-boundary metadata, dependency-scan metadata, and

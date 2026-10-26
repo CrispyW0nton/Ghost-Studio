@@ -399,6 +399,7 @@ PYTHON_PAYLOAD_SEQUENCE_TRACKS_TRANSFORM_TRACK RCDATA "Python/src/sequence/track
 PYTHON_PAYLOAD_SEQUENCE_TRACKS_VISIBILITY_TRACK RCDATA "Python/src/sequence/tracks/visibility_track.py"
 PYTHON_PAYLOAD_SYSTEMS_BAS_ATTACHMENT_ALIGNMENT RCDATA "Python/src/systems/bas/attachment_alignment.py"
 PYTHON_PAYLOAD_SYSTEMS_BAS_ATTACHMENT_CATALOG RCDATA "Python/src/systems/bas/attachment_catalog.py"
+PYTHON_PAYLOAD_SYSTEMS_BAS_CHARACTER_PRESETS RCDATA "Python/src/systems/bas/character_presets.py"
 PYTHON_PAYLOAD_SYSTEMS_BAS_HEAD_RESOLUTION RCDATA "Python/src/systems/bas/head_resolution.py"
 PYTHON_PAYLOAD_SYSTEMS_BAS_MODEL_RECIPE RCDATA "Python/src/systems/bas/model_recipe.py"
 PYTHON_PAYLOAD_SYSTEMS_BAS_PREVIEW_COMPOSER RCDATA "Python/src/systems/bas/preview_composer.py"

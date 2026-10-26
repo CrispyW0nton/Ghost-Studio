@@ -91,6 +91,10 @@ std::string texture_name_candidates_json(std::string_view name) {
         result.append(",");
         result.append(json_string("c_drexl01"));
     }
+    if (key == "x_rptnblstr_001") {
+        result.append(",");
+        result.append(json_string("w_rptnblstr_001"));
+    }
     result.push_back(']');
     return result;
 }

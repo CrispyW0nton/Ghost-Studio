@@ -51,7 +51,7 @@ def test_character_builder_entry_offers_native_head_and_custom_cards() -> None:
     assert "self-contained KOTOR model" in source
 
 
-def test_custom_window_is_independent_and_exposes_the_nine_guided_steps() -> None:
+def test_custom_window_is_independent_and_exposes_the_ten_guided_steps() -> None:
     custom_source = (
         GUI_ROOT / "windows" / "qt_custom_rigged_character_builder_window.py"
     ).read_text(encoding="utf-8")
@@ -65,11 +65,30 @@ def test_custom_window_is_independent_and_exposes_the_nine_guided_steps() -> Non
         "Animation library",
         "Animation preparation",
         "Materials, textures, and UVs",
+        "Secondary Motion — Cloth & Hair",
         "KOTOR gameplay integration",
         "Validation and build",
         "Install and test",
     ):
         assert label in custom_source
+
+    assert custom_source.index('("materials_uvs", "Materials, textures, and UVs")') < custom_source.index(
+        '("secondary_motion", "Secondary Motion — Cloth & Hair")'
+    ) < custom_source.index('("gameplay", "KOTOR gameplay integration")')
+    assert "QtSecondaryMotionEditor" in custom_source
+
+
+def test_native_character_builder_embeds_the_shared_editor_after_rig_and_deformation() -> None:
+    display = (GUI_ROOT / "panels" / "qt_character_builder_panel.py").read_text(encoding="utf-8")
+    tools = (
+        ROOT / "native" / "GhostRigger.Core.Tools" / "Python" / "src" / "gui" / "panels" / "qt_character_builder_panel.py"
+    ).read_text(encoding="utf-8")
+
+    assert display == tools
+    assert 'addTab(right_split, "Rig & Deformation")' in display
+    assert 'addTab(self.secondary_motion_editor, "Secondary Motion")' in display
+    assert "QtSecondaryMotionEditor" in display
+    assert 'metadata["secondary_motion"]' in display
 
 
 def test_borhek_ui_golden_contract_requires_visible_idle_walk_run_and_safety() -> None:

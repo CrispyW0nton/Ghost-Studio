@@ -680,7 +680,10 @@ class PygfxMeshCache:
         if cached is not None:
             return cached
         try:
-            pixels = self._texture_pixels(source, sprite_alpha_source=sprite_alpha_source)
+            pixels = self._texture_pixels(
+                source,
+                sprite_alpha_source=sprite_alpha_source,
+            )
             if pixels is None:
                 return None
             texture = gfx.Texture(
@@ -712,7 +715,10 @@ class PygfxMeshCache:
             return None
         if pixels.ndim != 3 or pixels.shape[2] < 4:
             return None
-        pixels = np.ascontiguousarray(pixels[:, :, :4])
+        # TextureCache normalizes PIL rows to bottom-up for the shader-driven
+        # paths. PyGFX uploads NumPy rows directly, so restore top-down image
+        # order here; _pygfx_uvs supplies the one KotOR/D3D V conversion.
+        pixels = np.ascontiguousarray(pixels[::-1, :, :4])
         if sprite_alpha_source:
             rgb = pixels[:, :, :3].astype(np.float32) / 255.0
             peak = np.max(rgb, axis=2)

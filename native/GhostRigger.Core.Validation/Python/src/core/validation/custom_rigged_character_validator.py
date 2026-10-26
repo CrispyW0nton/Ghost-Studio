@@ -11,6 +11,7 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import Any, Iterable, Mapping, Sequence
 
 from src.core.project.custom_rigged_character_project import CustomRiggedCharacterProject
+from src.core.validation.secondary_motion_validator import validate_secondary_motion_profile
 
 
 _RESREF_RE = re.compile(r"^[a-z0-9_]{1,16}$")
@@ -318,6 +319,7 @@ class CustomRiggedCharacterValidator:
             )
             return report
         self._validate_hierarchy(snapshot, report)
+        self._validate_secondary_motion_drivers(project, snapshot, report)
         self._validate_skin(snapshot, project, report)
         self._validate_placement(snapshot, project, report)
         self._validate_animations(snapshot, project, report)
@@ -363,6 +365,25 @@ class CustomRiggedCharacterValidator:
         if project.global_scale <= 0 or not math.isfinite(project.global_scale):
             report.add("error", "invalid_global_scale", "Global scale must be a finite positive value.",
                        "Zero, negative, or non-finite scale cannot produce a coherent bind pose.", field="model_placement.global_scale")
+        secondary_report = validate_secondary_motion_profile(
+            project.secondary_motion,
+            target_kind="custom_character",
+        )
+        for issue in secondary_report.issues:
+            severity = "warning" if issue.severity == "write_blocking" else "error"
+            if issue.code == "missing_exact_model_identity":
+                severity = "information"
+            report.add(
+                severity,
+                f"secondary_motion_{issue.code}",
+                issue.message,
+                (
+                    "The exact MDL/MDX hashes are generated and revalidated during Build."
+                    if issue.code == "missing_exact_model_identity"
+                    else "Secondary-motion export and runtime promotion fail closed independently of ordinary character output."
+                ),
+                field=f"secondary_motion.{issue.target}" if issue.target else "secondary_motion",
+            )
         used = {int(value) for value in occupied_animation_ids}
         local: set[int] = set()
         names: set[str] = set()
@@ -445,6 +466,38 @@ class CustomRiggedCharacterValidator:
                     "Use an uncompressed mono 16-bit WAV at 11025, 22050, or 44100 Hz.",
                     field=f"{field_prefix}.source_path",
                 )
+
+    def _validate_secondary_motion_drivers(
+        self,
+        project: CustomRiggedCharacterProject,
+        snapshot: CustomRiggedCharacterSnapshot,
+        report: CustomRigValidationReport,
+    ) -> None:
+        """Bind authored driver names to this custom rig, never to PFBNM names."""
+
+        parents = {node.name.casefold(): node.parent.casefold() for node in snapshot.nodes}
+        for region_index, region in enumerate(project.secondary_motion.get("regions") or ()):
+            for driver_index, driver in enumerate(region.get("drivers") or ()):
+                name = str(driver.get("name") or "").strip()
+                parent = str(driver.get("parent_name") or "").strip()
+                field = f"secondary_motion.regions.{region_index}.drivers.{driver_index}"
+                actual_parent = parents.get(name.casefold())
+                if actual_parent is None:
+                    report.add(
+                        "error",
+                        "secondary_motion_driver_missing",
+                        f"Secondary-motion driver '{name}' is not in the imported KOTOR hierarchy.",
+                        "Custom rigs may use any bone names, but every selected driver must resolve exactly in the final hierarchy.",
+                        field=f"{field}.name",
+                    )
+                elif parent and actual_parent != parent.casefold():
+                    report.add(
+                        "error",
+                        "secondary_motion_driver_parent_changed",
+                        f"Driver '{name}' is no longer parented to '{parent}'.",
+                        "The compiled runtime selector requires exact named parent and rest-transform agreement.",
+                        field=f"{field}.parent_name",
+                    )
 
     def _validate_hierarchy(self, snapshot: CustomRiggedCharacterSnapshot, report: CustomRigValidationReport) -> None:
         if snapshot.skeleton_selection_required:

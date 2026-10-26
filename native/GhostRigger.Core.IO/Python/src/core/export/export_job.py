@@ -217,7 +217,12 @@ def run_export_job(
                     backup = staging_dir / f"{final.name}.ghostrigger_backup"
                     os.replace(final, backup)
                     backups[final] = backup
-                os.replace(staged, final)
+                if request.overwrite:
+                    os.replace(staged, final)
+                else:
+                    # Atomic creation: a file appearing after preflight must
+                    # never be replaced. Staging cleanup removes the other link.
+                    os.link(staged, final)
                 final_paths.append(final)
         except Exception as exc:
             rollback_messages = _rollback_promoted_outputs(final_paths, backups)
@@ -257,6 +262,43 @@ def run_export_job(
         return result
     finally:
         shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+def promote_staged_files(staging_dir: Path, target_parent: Path) -> list[Path]:
+    """Atomically promote a dynamically discovered set of staged files.
+
+    Unlike :func:`run_export_job`, this helper supports exporters whose sidecar
+    filenames are not known until after the writer finishes. Existing outputs
+    are restored if any promotion fails.
+    """
+
+    staged_files = sorted(
+        (item for item in Path(staging_dir).iterdir() if item.is_file()),
+        key=lambda item: item.name.casefold(),
+    )
+    target_parent = Path(target_parent)
+    target_parent.mkdir(parents=True, exist_ok=True)
+    backup_dir = Path(tempfile.mkdtemp(prefix=".grx_backups_", dir=str(staging_dir)))
+    backups: dict[Path, Path] = {}
+    promoted: list[Path] = []
+    try:
+        for staged in staged_files:
+            final = target_parent / staged.name
+            if final.exists():
+                backup = backup_dir / staged.name
+                os.replace(final, backup)
+                backups[final] = backup
+            os.replace(staged, final)
+            promoted.append(final)
+        return promoted
+    except Exception as exc:
+        rollback_messages = _rollback_promoted_outputs(promoted, backups)
+        message = f"Staged export promotion failed: {exc}"
+        if rollback_messages:
+            message += " Rollback issues: " + "; ".join(rollback_messages)
+        raise OSError(message) from exc
+    finally:
+        shutil.rmtree(backup_dir, ignore_errors=True)
 
 
 def _preflight_export_request(request: ExportJobRequest) -> ValidationReport:

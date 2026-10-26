@@ -13,10 +13,11 @@ from typing import Any, Mapping
 from .ghostrigger_project import stable_project_id
 from .project_validation import ProjectValidationIssue, ProjectValidationReport, validate_resource_address
 from .resource_address import ResourceAddress
+from .secondary_motion_profile import SecondaryMotionProfile, default_secondary_motion_profile
 
 
 PLACEABLE_ASSET_FILE_TYPE = "ghostrigger.placeable_asset"
-CURRENT_PLACEABLE_ASSET_SCHEMA_VERSION = 1
+CURRENT_PLACEABLE_ASSET_SCHEMA_VERSION = 2
 PLACEABLE_ASSET_FILE_SUFFIX = ".ghostplaceable.json"
 PLACEABLE_CATEGORIES = ("container", "terminal", "puzzle", "interactive", "decor")
 PLACEABLE_SCRIPT_HOOKS = (
@@ -257,12 +258,15 @@ class PlaceableAsset:
     base_template: ResourceAddress | None = None
     base_evidence: PlaceableBaseTemplateEvidence | None = None
     appearance_evidence: PlaceableAppearanceMappingEvidence | None = None
+    secondary_motion: dict[str, Any] = field(default_factory=default_secondary_motion_profile)
     metadata: dict[str, Any] = field(default_factory=dict)
+    extra_fields: dict[str, Any] = field(default_factory=dict, repr=False)
     schema_version: int = CURRENT_PLACEABLE_ASSET_SCHEMA_VERSION
     file_type: str = PLACEABLE_ASSET_FILE_TYPE
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = dict(self.extra_fields)
+        payload.update({
             "file_type": self.file_type,
             "schema_version": int(self.schema_version),
             "asset_id": self.asset_id,
@@ -281,13 +285,16 @@ class PlaceableAsset:
             "base_template": _address_dict(self.base_template),
             "base_evidence": self.base_evidence.to_dict() if self.base_evidence else None,
             "appearance_evidence": self.appearance_evidence.to_dict() if self.appearance_evidence else None,
+            "secondary_motion": SecondaryMotionProfile.from_dict(self.secondary_motion).to_dict(),
             "metadata": dict(self.metadata or {}),
-        }
+        })
+        return payload
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "PlaceableAsset":
         if not isinstance(data, Mapping):
             raise ValueError("Placeable asset data must be a JSON object.")
+        data = migrate_placeable_asset_payload(data)
         return cls(
             asset_id=str(data.get("asset_id") or stable_project_id("placeable")),
             game=str(data.get("game") or "K2").upper(),
@@ -305,10 +312,44 @@ class PlaceableAsset:
             base_template=_address(data.get("base_template")),
             base_evidence=PlaceableBaseTemplateEvidence.from_dict(data.get("base_evidence")),
             appearance_evidence=PlaceableAppearanceMappingEvidence.from_dict(data.get("appearance_evidence")),
+            secondary_motion=SecondaryMotionProfile.from_dict(data.get("secondary_motion")).to_dict(),
             metadata=dict(data.get("metadata") or {}),
+            extra_fields={
+                str(key): value
+                for key, value in data.items()
+                if key not in {
+                    "file_type", "schema_version", "asset_id", "game", "template_resref", "tag",
+                    "display_name", "description", "comment", "category", "visual_source",
+                    "appearance_id", "gameplay", "scripts", "resources", "base_template",
+                    "base_evidence", "appearance_evidence", "secondary_motion", "metadata",
+                }
+            },
             schema_version=int(data.get("schema_version") or 0),
             file_type=str(data.get("file_type") or ""),
         )
+
+
+def migrate_placeable_asset_payload(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Migrate placeable authoring documents without discarding extensions."""
+
+    if not isinstance(raw, Mapping):
+        raise ValueError("Placeable asset data must be a JSON object.")
+    data = dict(raw)
+    version = int(data.get("schema_version") or 0)
+    if version > CURRENT_PLACEABLE_ASSET_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported placeable asset schema version {version}.")
+    if version in {0, 1}:
+        data.setdefault("file_type", PLACEABLE_ASSET_FILE_TYPE)
+        data.setdefault(
+            "secondary_motion",
+            default_secondary_motion_profile(target_game=str(data.get("game") or "K2")),
+        )
+        data["schema_version"] = 2
+    if data.get("file_type") != PLACEABLE_ASSET_FILE_TYPE:
+        raise ValueError("File is not a GhostRigger placeable asset.")
+    if int(data.get("schema_version") or 0) != CURRENT_PLACEABLE_ASSET_SCHEMA_VERSION:
+        raise ValueError("Placeable asset schema is not supported.")
+    return data
 
 
 @dataclass(frozen=True)
@@ -460,6 +501,7 @@ __all__ = [
     "PlaceableGameplay",
     "PlaceableResourceRefs",
     "load_placeable_asset",
+    "migrate_placeable_asset_payload",
     "save_placeable_asset",
     "validate_placeable_asset",
 ]

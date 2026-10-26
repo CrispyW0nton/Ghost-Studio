@@ -1,5 +1,164 @@
 # Changes
 
+## 2026-10-01 — Spatial MCP request metadata compatibility (Kaigen usage audit)
+
+- Owner: Kaigen usage-intelligence task. The standalone Core.Automation spatial
+  stdio adapter now accepts MCP `_meta` dictionaries on tool listing and calls.
+  Metadata is not forwarded to native arguments or treated as authorization.
+- The four-tool catalog and strict tool arguments remain unchanged. Unknown
+  request fields and malformed metadata still fail closed. Protocol reference:
+  https://modelcontextprotocol.io/specification/2025-11-25/basic#meta
+- Verification: focused spatial MCP protocol tests, including metadata listing,
+  no-authority forwarding and invalid capture rejection. This fixes a reproduced
+  compatibility failure; Codex freeze causality remains unproven. No native
+  rebuild or live Ghost session mutation.
+
+## 2026-09-30 — KOTOR engine light model and KOTOR-linear bake mode (Kaigen's re_lighting_alignment group)
+
+- Owner: LordVaderCW.
+- Why: the lightmap baker was described as a forward model of KOTOR lighting, but it baked with `(1 - d/r)^2 x 0.45`, an ambient floor, a 0.08 x diffuse "indirect" term, the material diffuse, Reinhard and gamma 2.2, so it could not validate lights fitted from vanilla lightmaps (003EBO pilot: `solve_buffer` "is not linear in stored bytes"). Static RE of swkotor2.exe 817494 (`astra/research/re/RE02_v001.md`, `astra/research/vanilla_relight/engine_lighting_model_v001.md`, rechecked against the pristine EXE's `.rdata`) gives the engine's model: lightmap program 0x00990EC8 draws `D x (v0 + LM)` (additive, no x2); `v0 = E + owned x A_m x DynAmbient + sum_{3} att x (L_amb x A_m + max(N.L, 0) x L_diff x D_m)`, `att = 1/(1 + 4.5 d^2/r^2)`, no specular, multiplier ignored, point lights only.
+- New Core.Rendering `core/lighting/kotor_engine_lighting.py` (headless numpy; Core.Tools consumer copy byte-identical): engine attenuation (vertex-program and fixed-function forms), falloff families (engine / Ghost legacy shape / linear) in lightmap units, `KotorEngineLight.from_record` (world position from the node chain like PartLight +0x94, signed colours, dynamic type, affect-dynamic, priority), the 0x00508160 candidate order, object and static-room light selection (3 per draw; static rooms type 1 only), `vertex_light_v0`, the additive and x2 composites, the env + lightmap composite (0x00990020), `lightmap_for_target`, the `gidy_sun` point light and `dc1_predictions`.
+- `lightmap_bake_settings.py`: `lighting_model` (`"ghost"` stays the default artist bake; `"kotor_engine"`), `kotor_falloff`, `kotor_cutoff_scale` (1 = engine candidate rule, 0 = no cut, 2 = 003EBO best fit), `kotor_apply_multiplier` (off like the vertex program), `encode_gamma` (1 = linear stored bytes), `for_kotor_engine()`; exposure/gamma/strength validation now also rejects NaN and infinity.
+- `lightmap_lighting_solver.py`: `"kotor_engine"` bakes the engine light term in stored-byte units (float64): ambient-only lights attenuated without N.L, spot/area baked as point lights and directional as distant lights with a warning, negative lights kept and occluded like positive ones, shadow rays to the light's world position, optional explicit constant fill, no tone map/diffuse/indirect (ignored with a warning); it warns when dynamic type-1 lights are baked (the engine also adds them at run time). The `"ghost"` path is unchanged.
+- `adapters/gpu/lightmap_gpu_solver.py`: `"kotor_engine"` runs on the CPU in float64. The artist GPU path now matches the CPU path exactly (it ignored `light_falloff_multiplier`, `ambient_strength` for ambient lights, `area_size`, `diffuse_strength` and `indirect_strength`, and clamped negative lights before ambient), so a bake no longer depends on GPU availability.
+- `lightmap_outdoor_solver.py` (untracked DXM_101 work, edited in place, defaults unchanged, still loadable by file path): `encode_kotor_pages(composite="x2"|"additive", runtime_v0=...)` with a corrected docstring (x2 is kept as default until the in-game check DC-1); `OutdoorLightingModel.sun_position` (point sun, per-texel direction, shadow rays that stop at the sun) and `sun_attenuation_radius`.
+- `preview_cache.py`: the preview key includes each light's ambient-only and shadow flags (a toggled light reused a stale preview).
+- Core.Resources `kotor_loader.py`: binary MDL light colours keep their sign (395 vanilla K2 lights are negative; the ASCII parser already kept it). The viewport light upload still clamps for display.
+- Not changed (visible renderer behaviour needs a Debug-app check): the viewport GLSL composite (gob-room DynAmbient, env + lightmap is mixed instead of added, translucent lightmapped meshes, fog on lightmapped draws) and the viewport scene-light shading (16 lights, `(1 - d/r)^2`, specular). Cards with exact changes: `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/re_alignment_cards.md`.
+- Verification (C:/Python314, one pytest process each, no xdist): `tests/test_kotor_engine_lighting.py` (new, 17 passed, including a ModernGL CPU/GPU parity case and an Embree point-sun case), `tests/test_lightmap_baker.py` (18 passed), `tests/test_map_studio_lightmap_apply_workflow.py` (9 passed). Kaigen's disposable qualification (`.../re_lighting_alignment/qualification.json`): program text and constants read from the pristine EXE, Ghost's falloffs equal the pilot's `att()` on 162,128 vanilla 003EBO texels with 66 fitted lights (max 3.3e-8 LM), and a `%TEMP%` fixture bake stores exactly the independently computed bytes. KOTOR was not launched; no game files were read or written except the Ghidra-workspace EXE copy (read only).
+- Payload manifests: only the sha256 rows of the edited files were refreshed (Rendering: `lightmap_bake_settings.py`, `lightmap_lighting_solver.py`, `preview_cache.py`, `adapters/gpu/lightmap_gpu_solver.py`; Tools: the first three; Resources: `kotor_loader.py`). `kotor_engine_lighting.py` is new and not in the Rendering/Tools manifests yet (the pre-build `GeneratePythonPayload.py` adds it); rebuild before relying on `GhostStudio.exe` for the KOTOR mode. No native rebuild. `tests/test_native_python_payloads.py` was already failing before this change (payload count 1455 vs the asserted 1096; stale rows from other work).
+- Intersects: `lightmap_outdoor_solver.py` belongs to the DXM_101 pipeline session (`DathomirBuildKit/Tools/Kotor/kotor_lightmap_v001.py` calls `encode_kotor_pages` with defaults, whose output is unchanged).
+
+## 2026-09-30 — Authenticated Unity MCP Ghost smoke for Kaigen's unity_legacy group
+
+- Owner: LordVaderCW.
+- Core.Tools `core/special/unity_malak_smoke.py`: the Unity smoke now speaks the authenticated Unity MCP Ghost bridge protocol (0.2.x). The endpoint and token come only from `<project>/Library/UnityMcpGhost/bridge-identity.json` and `bridge-token.txt`: host `127.0.0.1` only, the project ID and root must equal the project path's identity, and the token file must be the project's own (an identity naming another file is refused, as are links and junctions). Every request carries the bearer token, `requestId`, a deadline, an idempotency key and the pinned project and editor IDs; HTTP proxies are bypassed, redirects are refused, the JSON-RPC id is checked, and the token is never logged, returned or written. The old client sent none of this (the current bridge answers 401) and accepted any host.
+- Before any mutation the authenticated `health` must name the same project path, project and editor, and `editor.snapshot` / `editor.get_state` refuse unsaved (`scene-dirty`) or untitled scenes, Play mode, compiling, importing and a busy bridge queue (the old `scene.open` single could discard unsaved work). The smoke restores the prior scene setup through `editor.restore_snapshot` and verifies it; `dry_run` reports readiness only. Scene, asset and instance are validated parameters (the Malak defaults stay for the CLI). Screenshots are size-bounded, read only from the bridge's `Library/UnityMcpGhost/screenshots` and copied exclusively into an optional `screenshot_dir`; the report is created exclusively; `asset.refresh` is optional and followed by a bounded wait for import and compilation; bridge mutations use idempotency keys derived from `operation_id`.
+- KotorMCP `tools/ghostrigger.py`: the `ghostrigger_run_malak_unity_smoke` schema drops `host`/`port` and adds `screenshot_dir`, `screenshot_width`/`screenshot_height`, `refresh_assets`, `dry_run`, `operation_id` and `expected_port`/`expected_editor_instance_id` (a caller that verified the listener binds the call to that identity; a rewritten identity is refused before the token is sent) (`additionalProperties:false`). The handler rejects unknown arguments, reports failures as `isError` with a code and no traceback, and with `output_path` answers with a bounded summary (`smoke_ok`, issue and warning codes, restore result, report sha256). `scripts/run_malak_unity_smoke.py` follows (`--port` is only an assertion; new `--dry-run`, `--no-refresh`, `--screenshot-dir`).
+- Verification: `tests/test_kaigen_unity_smoke_contracts.py` (new: a loopback bridge that enforces the token and pinned IDs drives the real HTTP client) plus the updated `tests/test_unity_malak_smoke.py`, 31 passed in one pytest process without xdist. The Kaigen qualification (no Unity Editor started) is in `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/unity_legacy/`.
+- Payload manifests: only the sha256 rows of `core/special/unity_malak_smoke.py` (Tools) and `kotormcp/tools/ghostrigger.py` (Automation) were refreshed. No native rebuild.
+
+## 2026-09-30 — KOTOR live-game window/pid identity for Kaigen's live_game group
+
+- Owner: LordVaderCW.
+- KotorMCP `game_input.py`: `KotorWindowInput` no longer identifies the game window by title (the old `FindWindowW` exact match, then any visible window where `needle in title or title in needle`, let any window titled like "Star Wars" receive real input). It now accepts only a window whose owning process image is exactly `<install_path>/swkotor2.exe` (K2) or `swkotor.exe` (K1), read through `QueryFullProcessImageNameW`. Identity is mandatory: `require_window` refuses without a resolved installation, `status` reports `process_path`/`expected_exe_path`/`identity_ok`, and `capture_window` additionally requires the identified window to be foreground before its screen-rectangle grab so an overlapping window is never captured. `tools/kotor_input.py` resolves the installation (explicit `path`, else the game alias through the registry) and passes it as the window identity and the DirectInput hook root.
+- KotorMCP `game_process_log.py`: new `verify_pid_identity` and `Win32ProcessProbe.process_image_path`. `kotor_log_start` verifies any explicit `pid` is the installation executable (basename, and full path when the game root is known) before the detached helper debug-attaches — in both `start_log_session` (parent) and `run_monitor` (child) — so a stray pid can never `DebugActiveProcess` an unrelated process such as LM Studio or Substance Painter.
+- KotorMCP `tools/game_test.py`: `kotor_prepare_save_warp_test` validates `target_module` (`[a-z0-9_]{1,32}`, rejecting traversal) and its save discovery is depth- and count-bounded (`_iter_savegames`) instead of an unbounded `**/SAVEGAME.sav` glob under a caller-supplied `save_root`. Schema and the launch path are unchanged; Kaigen's wrapper forbids `launch_game`.
+- No new native tools and no changed tool schemas (the allowed catalog fingerprint is unchanged). The DirectInput proxy install uses the existing `kotor_dinput_hook_install` (`force`, `backup_root`); its restore is a bounded compare-and-swap the Kaigen layer performs against a `%TEMP%` fixture with its own readback.
+- Verification: `tests/test_kaigen_live_game_contracts.py` (11 passed, one pytest process, no xdist) covering the process-image identity, the log pid verification refusing a non-KOTOR or dead pid and enforcing the install path, the `target_module` guard and save-scan bound, and the DirectInput proxy command allowlist and install/backup. Kaigen fixture qualification (game never launched) is in `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/live_game/`; the running-game tools stay excluded pending a director-approved live run (`live-qualification.mjs`).
+- Payload manifest: only the sha256 rows of `game_input.py`, `game_process_log.py`, `tools/game_test.py` and `tools/kotor_input.py` (Automation) were refreshed. The Automation `server.py` row is still stale from other in-progress work. No native rebuild. No game files changed and KOTOR was not launched.
+
+## 2026-09-30 — Bounded game-data contracts for Kaigen's game_data group
+
+- Owner: LordVaderCW.
+- KotorMCP `archives.py`: `kotor_extract_resource` takes `game_path` (an absolute installation with `chitin.key` and the game's executable, indexed afresh on every call instead of the game-keyed registry cache, which could serve another directory or an index that predates Override changes). It resolves one location at a time (default Override, modules, chitin; `source` may name one PyKotor search location) and reports the location that supplied the bytes, the container file relative to the installation (for example `data/2da.bif`), the size and the SHA-256. `dry_run` reports and writes nothing; `output_dir` writes `<resref>.<ext>` into an existing directory outside the installation; the legacy `output_path` stays confined under `PYKOTOR_EXTRACT_DIR`/cwd. Files are created exclusively unless `overwrite` is true, resources over 64 MiB are refused, arguments are strict, and every error is valid JSON flagged `isError` (the f-string JSON broke on Windows paths; `kotor_list_archive` errors are fixed the same way, its schema unchanged).
+- Core.Workflow `packaging.py` (the canonical `src/core/scripting/packaging.py` and its byte-identical Workflow payload copy): `install_override` accepts `backup_root` (an existing folder in a separate tree; the transaction, conflict backups and receipt go there, so the game root gains only the Override files) and `expected_existing` (per-file `absent` or SHA-256; any other state refuses before writing, and a file that changes or appears during the install is refused). The install receipt records `installed_sha256`, `backed_up_sha256` and `backup_location`. New `restore_override_file`: a compare-and-swap undo that requires the current Override file to hold the installed SHA-256, saves those bytes exclusively under `backup_root`, then writes the prior bytes back or removes a created file, and puts the installed bytes back on any failure. The default install behaviour (backups under `GhostStudioBackups`) is unchanged.
+- KotorMCP `legacy_ghostscripter.py`: `writeOverride` passes `backup_root` and `expect_existing` through (schema extended, `additionalProperties:false`); the shared install guard is factored into `_validated_game_root`/`_validated_backup_root`. New native tool `ghoststudio_restore_override` (literal `confirm_restore`, exactly one of `prior_data_b64` or `remove_file`, `expect_current`, `backup_root`). Both report failures as MCP `isError`. `writeSSF`/`writePTH` schemas and behaviour are unchanged; Kaigen denies their Override-install arguments.
+- Verification: `tests/test_kaigen_game_data_contracts.py` (4 passed), `tests/test_kotormcp_extract_boundary.py`, the `writeOverride` gate and writer-inventory cases of `tests/test_ghostscripter_automation_compat.py` and the Override case of `tests/test_scripting_project_packaging.py` (12 passed together, one pytest process). Kaigen extracted from the K1 installation read only and installed/restored only in a disposable `%TEMP%` fixture; evidence is in `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/game_data/`.
+- Payload manifests: only the sha256 rows of `archives.py`, `legacy_ghostscripter.py` (Automation) and `packaging.py` (Workflow) were refreshed. The Automation `server.py` row is still stale from other in-progress work; `kotormcp/utils/path_safety.py` (untracked, another session) is not in the Automation manifest. No native rebuild. No game files changed. `tests/test_ghostscripter_automation_compat.py::test_all_callable_registry_names_are_registered_without_duplicates` still asserts 168 tools; the catalog was already 171 before this change and is now 172.
+
+## 2026-09-29 — Authenticated Kaigen GUI control channel (Kaigen's ghoststudio_gui group)
+
+- Owner: LordVaderCW.
+- New `native/GhostRigger.Core.Automation/Python/src/ipc/kaigen_gui_control.py`: an opt-in loopback listener, separate from the legacy port-7001 IPC (which is unchanged). It starts only when `GHOSTSTUDIO_KAIGEN_CONTROL_PATH` names an absolute descriptor path, binds `127.0.0.1` on an ephemeral port and publishes the session id, a per-process 256-bit secret, pid, port, executable and its own source SHA-256 there (exclusive temp file, then replace; removed on stop only if it is still its own). Every request is HMAC-SHA256 signed over method, path, session, timestamp, nonce and body hash (30 s skew, bounded nonce replay cache, exact `Host`, 64 KiB bodies); every authenticated response is signed over its status, the request nonce and body hash. Exactly three routes (state, open-model, capture) with strict payloads; refusals are stable codes, failures never return tracebacks, one GUI request runs at a time.
+- New `native/GhostRigger.Core.GUI.Display/Python/src/gui/windows/application_core/shared/kaigen_control.py`: the window side, run on the Qt thread. `state` returns a revisioned scene/model/busy snapshot with the SHA-256 of the MDL/MDX bytes the current model was parsed from, the configured game directories and GUI readiness. `open_model` refuses while a load is running, while the scene has unsaved changes, when the state moved since Kaigen's preview, when the configured game directory is not the previewed installation, and when the bytes the resource manager resolves differ from the previewed hashes; it parses exactly those bytes before touching the scene and opens them into a new untitled scene (the previous scene's file is untouched). No dialog is shown. `capture` returns the viewport as PNG bytes; it takes no path.
+- `qt_main_window.py`: `_start_ipc_server` ends with `_start_optional_kaigen_gui_control()` (no-op without the environment variable; import or start failures are logged and leave the channel off). `window_lifecycle.py`: `closeEvent` stops it. The legacy `ghostrigger_open_model` KotorMCP tool is unchanged; Kaigen does not publish it.
+- Note: `GhostStudio.exe`'s host imports Python from the payload DLLs beside it, and the checkout-root DLLs (2026-08-10) predate this channel. Kaigen's launcher runs the checkout from source instead (`pythonw main.py` with an empty `GHOSTRIGGER_NATIVE_BUILD_OUTPUT_DIR`). The new modules are not in the payload manifests yet; regenerate the GUI.Display and Automation payloads and rebuild before relying on `GhostStudio.exe` for the channel.
+- Verification: `tests/test_kaigen_gui_control_contracts.py` (6 passed, one pytest process). Kaigen launched this checkout from source, opened `plc_bench` through the channel and closed the GUI it started; evidence is in `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/ghoststudio_gui/`.
+- Payload manifest: only the GUI.Display sha256 rows of `qt_main_window.py` and `window_lifecycle.py` were refreshed. No native rebuild. No game files changed.
+
+## 2026-09-29 — Headless debug session contract for Kaigen's ghostrigger_session group
+
+- Owner: LordVaderCW.
+- KotorMCP `debug_skinning.py` (the in-process headless session, not the GhostRigger Debug app): each launch mints a `session_id` (UUID) and `state_revision()` hashes the observable state (install, game tag, model source bytes, animation, time, camera); `ghostrigger_debug_get_runtime_status` and every successful session mutation report both. Relaunching releases the previous `GpuRenderer` instead of leaking it.
+- `load_model` now resolves through the export locator (`_get_services().locator`, Override/modules/chitin via the installation, with the K1/K2 alias from the detected game tag) instead of BIFs only, validates the resref (1 to 16 safe characters), records `model_source` (path label plus MDL/MDX SHA-256) and clears the previous model's animation bind reference (`anim_base_pose` leaked across loads). New `session_source_identity()` computes the same identity from a throwaway probe; `ghostrigger_source_identity` mode `debug_bif` is replaced by `debug_session`.
+- Bounds: `set_animation` accepts only the loaded model's animation names; `set_animation_time` refuses NaN, infinities, negatives, booleans, strings and times beyond the animation length (the handler no longer coerces with `float()`); a non-string camera preset returns an error instead of raising `TypeError`; `set_game_library_path` requires an absolute existing directory; `capture_viewport` requires integer sizes and an absolute `.png` path and supports `overwrite:false`; `capture_validation_set` requires an absolute `output_dir` (it defaulted into this checkout), supports `overwrite:false` (new or empty directory, exclusive PNGs) and restores the caller's camera as well as the pose. Session handlers flag `ok:false` replies as MCP `isError`. Raw schemas carry the same bounds and `additionalProperties:false`.
+- Rendering fixes found in qualification: captures framed the MDL header bounds, which are oversized placeholders, so the model was a speck; they now frame `_compute_model_bounds` like `ghostrigger_render_model`. The camera presets were rotated 90 degrees from `ArcBallCamera` (eye at azimuth 90 is the canonical front; KOTOR models face +Y), so "front" captures showed the model's side; front/side/top/back are now 90/0/90/270 and the session default matches front. Capture replies include the resolved texture count and game tag.
+- Verification: `tests/test_kaigen_debug_session_contracts.py` (6 passed) and `tests/test_kaigen_export_contracts.py` (11 passed), one pytest process each. Kaigen drove every session wrapper against the K1 (pmbam, c_rakghoul) and K2 (p_kreiabb, textures resolved as K2) installations read only; evidence is in `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/ghostrigger_session/`.
+- Payload manifest: only the Automation sha256 rows of `debug_skinning.py` and `ghostrigger.py` were refreshed. No native rebuild. No game files changed.
+
+## 2026-09-29 — Bounded export contracts for Kaigen's exports group
+
+- Owner: LordVaderCW.
+- KotorMCP `ghostrigger.py`: added the read-only `ghostrigger_source_identity` tool (model/head MDL+MDX hashes via the export locator, the debug session's BIF extraction, or the Day 4 retarget corpus, plus `chitin.key`). `ghostrigger_render_model` bounds width/height (16 to 4096) and camera angles, no longer returns tracebacks, and with `overwrite:false` creates its PNG exclusively. The Unreal and Unity exports accept `overwrite:false` (refuse an existing asset, `.ghostrigger.json` or `.pbr.json`), the Unreal export rejects a mismatched suffix instead of silently rewriting it and requires a plain `output_name`, and all three flag `{"error": ...}` replies as MCP `isError`.
+- `retargeting.py`: `ghostrigger_build_retarget_map` bounds `manual_mapping` (512 pairs, 128-character names) and flags errors. `ghostrigger_export_unity_fbx` accepts only an fps of 1 to 120 in `options_overrides`, supports `overwrite:false`, writes Blender logs beside its output, derives `validation_status` from the roundtrip gates instead of hard-coding PASS, and reports a Blender timeout without the command line.
+- Core.Workflow `fbx_exporter.py`/`sampler.py`: `REPO_ROOT` and the stock corpus now use the renamer's repository-root resolver; after the native split `parents[3]` pointed at `native/GhostRigger.Core.Workflow/Python`, where the Blender script and fixtures do not exist. Blender children get `stdin=DEVNULL` (inheriting the KotorMCP protocol pipe while its reader thread blocked made Blender stall until the 300 s timeout). Discovery prefers the newest 4.x install and 5.x is refused up front, because Blender 5.0 removed the `Action.fcurves` API used by `scripts/blender_fbx_export.py`.
+- `scripts/blender_fbx_export.py`: the legacy clip builder no longer calls `scene.frame_set` per bone and frame; the keyed values are identical and the roundtrip frame-0 rotation delta is 1.3e-7.
+- Core.Unreal `quinn.py`: `SKELS_DIR` falls back to `native/GhostRigger.Native.Core.Host/RuntimePayload/src/unreal/skels`; the package copy has no `skels` folder, so the Quinn target silently had no bones in source checkouts (two retargeting tests were skipping).
+- Core.IO `unity_export_bridge.py`: `build_output_paths` rejects `..`/drive components in `asset_subdir` and non-plain output stems.
+- `debug_skinning.py`: TSL directories (with `swkotor2.exe`) are indexed with `set_k2_dir` and textures resolve as K2; BIF resource tables and sizes are bounds-checked (256 MiB); captures bound width/height, drop tracebacks and support exclusive creation; validation-set names must be 1 to 64 safe characters; `export_debug_bundle` supports `overwrite:false` (new or empty directory, exclusive files) and flags failures. `debug_materials.py`: `ghostrigger_export_render_debug_bundle` requires an absolute `.json` path (it defaulted to the server cwd, the repository root), supports `overwrite:false` and flags errors.
+- Verification: `tests/test_kaigen_export_contracts.py` (11 passed), `tests/test_mcp_retargeting_tools.py` (4 passed, previously 2 skipped), `tests/test_mcp_bas_unreal_export.py` and six focused `test_unity_export_bridge.py` cases passed. Kaigen drove every wrapped tool against the K1 installation read only; evidence is in `KaigenStudio/knowledge/ghoststudio-tool-qualification-20260929/exports/`.
+- Payload manifests: only the sha256 rows of the nine changed files were refreshed (Automation, Workflow, IO, Unreal). The Automation rows for `server.py` and `archives.py` were already stale from other in-progress work and were left as found. No native rebuild. No game files changed.
+
+## 2026-09-24 — Program audit and native Unreal import implementation (T3105)
+
+- Owner: LordVaderCW.
+- Audit: recorded eight actionable bugs in `docs/audits/2026-09-24-program-audit/REPORT.md`, with temporary-file reproductions and evidence. Four high-priority findings cover export rollback corruption, deletion of recovery backups, non-atomic scene saving, and nondeterministic duplicate embedded module ownership. The audit fixes remain separate from this implementation.
+- Core.Unreal: added the native UE 5.8.2 exporter plugin and menu source, stable GUID/component identities, effective section slots, recursive dependency hashes and explicit unsupported-content diagnostics. Runs inside Unreal with no AI/MCP/network dependency.
+- Core.IO/Math/Scene/Workflow: native static conversion recipes, bounded portable immutable assets, compact atomic Unreal-backed KMAP saves, independent source components, stale-safe preview/apply and three-way reimport. Source geometry changes preserve local transforms and Ghost spawn/gameplay; conflicting edits require a decision. Compilation projects components into the accepted single playable sector.
+- GUI.Display/Tools: added Map Studio Import / Reimport Unreal Level, static conversion choices, worker progress/cancel, conflict review, undoable commit and source labels. Actual Debug UI/theme checks remain pending; no shipped-UI acceptance claim.
+- Verification: 70 focused tests passed. Controller import/undo/redo/save/reopen and failed-save preservation pass. Repeat native Rhen Var snapshots are byte-identical; an unrelated native floor/mirrored-prop fixture also exports and compiles. The authoring/sector split reproduces accepted Rhen Var MOD SHA-256 `a65b6f138bd226eb38013318c286cd2f88017e06b572b41865666659de37d208`. New native Rhen Var conversion compiles 73 resources. No game files or saves changed.
+- Native payloads: Scene, Tools, Workflow and GUI Display regenerated. Existing IO `mdl_writer.py` and Math `head_skin_transfer.py` conflicts still block full generation; task-owned new rows alone were registered there, and all ten task-owned source/payload registrations pass.
+- Intersects: existing dirty `codex/publish-ghost-studio-20260805` work and the Unreal-to-KOTOR task's importer/sector projection, Map Studio controller/window, manifests, CHANGES and CHEETSHEET. Existing contributor changes and accepted retail output preserved.
+- Limitations: no active Visual Studio instance and an active KOTOR II session at verification time. Native Debug UI, native menu visual proof, durable Build & Play/install/rollback, KPM/debugger automation, retail save/reload and typed MCP jobs remain unfinished. `docs/UNREAL_PIPELINE_IMPLEMENTATION.md` records the exact checkpoint; T3105 is not complete.
+
+## 2026-09-24 — Unreal-to-KOTOR creator workflow design (T3105 supporting work)
+
+- Owner: LordVaderCW.
+- Recorded user acceptance of the Rhen Var retail test, with interior spawn deferred. Added `docs/UNREAL_TO_KOTOR_WORKFLOW_PLAN.md`: native Unreal export, Map Studio import/reimport and spawn/walkmesh review, source/component overrides, export sector projection, and Build & Play through KPM with debugger evidence.
+- This is a product/architecture specification with staged acceptance gates, not a shipped exporter plugin, wizard or qualified new MCP route. Grounded in the accepted retail fixture, existing compiler, Ghost Map Studio knowledge and the previously retrieved private resource-pipeline guidance. No code changed in this documentation step.
+
+## 2026-09-24 — Rhen Var retail visibility: compile one playable sector (T3105)
+
+- Owner: LordVaderCW.
+- Fixed the Unreal importer splitting static dressing into separate empty-WOK rooms. The single-sector v1 bridge now compiles all component surfaces beneath the authored collision room, preserving source transforms, materials, component identities and node mappings in KMAP metadata.
+- Verification: 34 focused importer/GPU tests pass, including dressing-before-floor and KMAP provenance. The corrected CLI reproduces the installed diagnostic MOD byte-for-byte (`a65b6f13...`). Retail KPM/debugger test shows textured architecture; user confirmed walking and collision work. Process exited normally with code 0 and no crash exceptions. Save/reload remains unverified; no general importer wizard or native Debug UI qualification is claimed.
+- Ownership: Core.Scene `unreal_level_import.py`; tests and import architecture/cheatsheet. Scene payload synchronized and regenerated. No retail executable, patch DLL, source Unreal geometry or collision bytes were changed.
+- Evidence: `../ZbrushMCP/knowledge/rnv-unreal-kotor2-20260924/RetailTestV2/verification.json` and `GhostBuildV3Reusable/receipt.json`. Precise engine loader branch is still unproven; this does not establish that all vanilla visual-only rooms are invalid.
+
+## 2026-09-24 — Unreal static level import prototype (T3105 supporting work)
+
+- Owner: LordVaderCW. Added hash-checked Unreal bundle IO, explicit coordinate/normal conversion in Core.Math, and a headless Core.Scene bridge into the existing K2 authored module compiler. The CLI previews dependencies/bundles and creates a new KMAP/module build with a revision-bound receipt; it never installs or drives the game.
+- Converted the user's actual Rhen Var scene through an isolated UE 5.8.2 native snapshot: 28 placed mesh components, 55 materials, explicit exterior ground collision, and retained source hashes. All 28 MDL/MDX resources and the 207-face WOK pass readback and raw engine-contract checks. Material/lighting adaptations and unsupported capabilities are recorded in `docs/UNREAL_LEVEL_IMPORT.md`.
+- Fixed ModernGL's front-face state: its right-handed static-mesh path was selecting CW and hiding imported room exteriors. Stock K2 `001ebo1` obtained through KotorMCP confirms face crosses agree with the supplied normals. A real GPU above/below-floor test fails before the CCW correction and passes afterward; source geometry is unchanged.
+- Verification: 33 focused importer and GPU tests passed. Matched-camera GPU captures show the exported buildings/props after the culling fix. This is headless evidence, not native Debug UI or retail game acceptance. The active unrelated K2 combat session was preserved; retail traversal/save/reload remains pending. T3105 is not complete.
+- Payload ownership: IO, Math and Scene for the importer; Rendering for the culling fix. Scene/Rendering generators succeeded. Existing IO `mdl_writer.py` and Math `head_skin_transfer.py` source/payload differences prevent full regeneration; only the new byte-identical import files were registered in those packages. No other source edits were synchronized and no native DLL build is claimed.
+- Root payload coverage additionally fails on the existing unregistered `src/core/modules/kotor_dialogue_manifest.py`; all four task-owned changed payload files pass targeted hash/registration checks. The count assertion now includes the three prior whole-level-export payloads and these three importer payloads.
+
+## 2026-09-13 — T2904/T2906 whole-level mesh export
+
+- Owner: LordVaderCW.
+- Added Core.Automation's `ghoststudio_export_level` to broad KotorMCP with saved-KMAP scope, explicit paths, file size/SHA-256, tool annotations and MCP error status. Core.IO now atomically preserves files created after no-overwrite preflight and checks every resolved output against the protected game directory, including texture sidecars.
+- MCP verification: 12 focused tests, including concurrent output preservation/rollback and redirected texture-folder protection; real stdio catalog discovery, error status, whole-level export and overwrite refusal. The spatial connector remains separate and does not gain desktop control.
+- Replaced the Level Editor's manifest-only FBX placeholder with static whole-level FBX and OBJ assembly. Enabled visible stock/authored rooms and resolved authored creature/placeable/door models retain baked placement, inverse-transpose normals, mirrored winding, diffuse material slots and texture sidecars. FBX carries secondary lightmap UVs; the manifest records lightmap associations and non-mesh scene metadata.
+- Owner surfaces: Map Studio/Level Editor orchestration in Core.Tools, assembly and transactional output in Core.IO (`src/io/level_scene_export.py`), instance math in Core.Math (`src/math/mesh_instance_transform.py`), progress presentation in GUI.Display (`src/gui/dialogs/level_scene_export_dialog.py`). Package-local bridge/controller/window wiring and the converter's explicit untextured-room opt-in are included. Source KOTOR assets and live model caches are preserved.
+- Missing required geometry fails before publication; writer failure preserves previous files. Texture references are rewritten by complete MTL entry, preserving overlapping names. Both writers' UV flips are paired with flipped texture copies. FBX/OBJ sidecars are separated by format.
+- Verification: 18 focused level-export regressions; five existing placement/flattener regressions; targeted native payload identity/project inclusion checks; successful isolated Debug x64 host build. K2 `001ebo1` MCP comparison matched PyKotor across 60 nodes. Real two-room exports produced 38 meshes/8,184 triangles in both formats; independent trimesh OBJ reimport retained 8,184 triangles and expected positioned bounds. No broad scans or game-file writes.
+- Visible verification limitation: launched the real Debug app under Visual Studio and inspected its live accessibility tree. End-to-end menu/export and theme appearance proof remain unverified because desktop capture fails with `SetIsBorderRequired / 0x80004002`, clicks report unavailable coordinate geometry, and keyboard workflow state is unreliable. This entry does not claim a completed UI acceptance check or a new binary release.
+- Intersects: existing uncommitted work on `codex/publish-ghost-studio-20260805` in Core.IO mesh conversion/export transactions, Core.Tools module window/controller and native manifests. Only this export change is isolated for publication; unrelated edits are preserved. GitHub default `ghost-studio` at `4d15cfc5` remains a separate older build line.
+
+## 2026-09-09 — MCP stock extraction compatibility
+
+- Owner: Codex; Core.Automation `kotormcp.tools.archives` and `kotormcp.utils.path_safety`.
+- Reproduced the missing `pykotor.tools.path_safety` import with pinned PyKotor 2.3.1. Added a local containment helper using the same PYKOTOR_EXTRACT_DIR/CWD contract without widening a nonexistent base. Corrected resource lookup to use extension `2da`, not enum name `TwoDA`. Failed or invalid explicit source restrictions now fail closed.
+- Verification: five focused `tests/test_kotormcp_extract_boundary.py` tests passed against the pinned runtime (preload `numpy, pykotor.extract.installation` before pytest to avoid the repository conftest's developer PyKotor path). Repeated stdio MCP extraction returned the 148,884-byte retail CHITIN appearance table, followed by N_OndSoldM1 MDL/MDX and original TEXTURES_TPA texture. Evidence: BetterArmor/ProductionReviews/OnderonMilitaryArmor_20260909/reference_revision_v01/ghost_soldier_inspection.json and ghost_stock_soldier_assets.json.
+- Added pytest and its missing test dependencies to the local `.venv` using uv; pinned PyKotor and MCP versions were retained. No game-file writes or native DLL rebuild.
+
+## 2026-09-09 — MCP preview bounds for Battle Armor
+
+- Owner: Codex; Automation handler consuming the Rendering bounds helper.
+- The PFBGM/PMBGM MDL headers contain placeholder bounds (-5,-5,-1) to (5,5,10), which made the preview body tiny. `ghostrigger_render_model` now uses the existing `_compute_model_bounds` renderable world-space bounds before framing the camera.
+- Verification: native/Ghost model comparisons matched for both resrefs; a focused bounds probe measured visible heights of 1.503 and 1.589 native units. Both MCP render calls returned GPU PNGs after the change. Evidence: BetterArmor/ProductionReviews/BattleArmor_20260909/ghost_bounds_probe.log and ghost_framing_fixed.json. No native DLL rebuild or retail-game proof is claimed.
+
+## 2026-09-09 — BetterArmor MCP rendering repair
+
+- Owner: Codex; Automation MCP handler consuming the Rendering adapter.
+- `ghostrigger_render_model` forced CPU mode on a GPU-only renderer, making a valid model return no image. Removed that override and made the unavailable-renderer error truthful.
+- Repaired the local `.venv` with repository-locked MCP 1.28.1, requirements-pinned PyKotor 2.3.1 and declared rendering dependencies. MCP 2.x is incompatible with the server's existing `list_tools` API.
+- Verification: 169-tool stdio catalog; `compare_model_pipelines`, native and Ghost inspection pass for K2 PFBKM/PMBKM. The original direct render reproduction returned None; after the change it wrote a 384x512 PNG using the GPU in 1.985 seconds. Evidence: BetterArmor/ProductionReviews/ArmoredFlightSuit_20260909/ghost_render_fixed.log.
+- Follow-up: the stdio call separately stalled during first NumPy native-extension initialization after AnyIO workers started. Preloading NumPy in `scripts/mcp/start_kotormcp_stdio.py` before server startup resolved the reproduced call. Both PFBKM and PMBKM now return status=ok, backend=gpu, and write PNGs in one normal MCP client session (4.7 seconds total). Evidence: `ghost_repaired_stdio_pair.json` and log in the same BetterArmor review folder. No native DLL rebuild is claimed.
+- Intersects: pre-existing uncommitted Automation handler changes. Only the forced-CPU line and corresponding error were changed for this repair; no embedded DLL rebuild or retail-game proof is claimed.
+
 This file records completed fixes and software changes so future agents can see what has already been done and avoid repeating work.
 
 For each completed change, add a dated entry with:
@@ -8,6 +167,552 @@ For each completed change, add a dated entry with:
 - A short summary of what changed
 - The files or area affected
 - The verification performed, such as tests, MCP comparisons, or manual checks
+
+## 2026-08-16
+
+### [2026-08-16] correct K1 c_kath animation placement and mane preview
+
+Owner: LordVaderCW
+
+Subsystem: Core.Workflow Aurora animation evaluation and Core.Rendering GPU
+mesh-resource preparation.
+
+Ghost Studio now treats K1 `c_kathroot` position-controller rows as the
+absolute parent-local values authored in the retail `c_kath` animations. This
+prevents the bind translation from being added a second time during BVH
+evaluation. Viewport playback additionally rebases the absolute root track to
+the clip's first row, preserving authored root-motion deltas without moving the
+KMAX scene actor away from its bind origin. Recognition follows the embedded
+`c_kath` DAG inside a scene wrapper, rather than depending on the wrapper model
+name. The GPU preview also omits only the redundant
+retail `c_kath/Hair01` atlas-card shell; the correctly textured mane on `Frnt`
+remains visible, while the imported node, original UV stream, validation data,
+and exported model remain unchanged.
+
+Affected files:
+
+- `native/GhostRigger.Core.Workflow/Python/src/core/animation/animation_engine.py`
+- `native/GhostRigger.Core.Rendering/Python/src/adapters/rendering/moderngl_resources.py`
+- the regenerated Core.Workflow and Core.Rendering Python payload manifests
+- `tests/test_aurora_animation_controller_semantics.py`
+
+Verification:
+
+- `compare_model_pipelines(k1, c_kath)` still reports a 38-node structural
+  match against PyKotor after the preview-only fix.
+- All 39 focused Aurora animation/controller and GPU VBO semantics tests pass,
+  including K1 `c_kath` absolute-root and non-`c_kath` hair-shell controls.
+- Both changed payload-manifest SHA-256 values match their packaged Python
+  files, and the focused Visual Studio payload-inclusion contract passes.
+- Built and staged the Debug x64 Core.Workflow and Core.Rendering DLLs loaded
+  by the root `GhostStudio.exe`; the running process loaded the staged DLL
+  hashes.
+- Real Ghost Studio ModernGL captures of K1 `c_kath` show the redundant striped
+  `Hair01` shell absent. `cwalk` at 50% remains centered at the scene origin,
+  and `cdodgeg` at 91% no longer jumps toward the camera when animation pose
+  application begins.
+- The package-wide source-coverage assertion remains blocked by the unrelated
+  pre-existing unowned `src/core/modules/kotor_dialogue_manifest.py` source;
+  this fix did not modify or adopt that file.
+
+## 2026-08-12
+
+### [2026-08-12] support K1 light-side portrait columns and bound input-proxy logging
+
+Owner: LordVaderCW
+
+Subsystem: Core.IO head game-record packaging and Core.Automation KOTOR
+DirectInput proxy diagnostics.
+
+K1 custom-head packages can now add the optional `BaseResRefG` and
+`BaseResRefVG` portrait columns that the light-side portrait runtime patch
+consumes. Existing package-owned portrait rows accept only that narrow schema
+upgrade; all pre-existing values must still match exactly. K2 continues to
+require its full retail schema. The DirectInput proxy now records only the
+first three acquire calls and result transitions instead of synchronously
+writing an identical unfocused-device failure every frame.
+
+Affected files:
+
+- `src/io/head_game_records.py`
+- Core.IO embedded copy and payload manifest row
+- `tests/test_head_game_records_and_package.py`
+- `native/GhostRigger.Core.Automation/Native/KotorDInputProxy/dinput8_proxy.cpp`
+
+Verification:
+
+- Three focused head-record regressions passed, covering fresh K1 light-side
+  column creation, narrow upgrade of an existing owned row, and K2 required
+  schema rejection.
+- The Core.IO copy of `head_game_records.py` is byte-identical to canonical
+  source and its manifest SHA-256 matches. The repository-wide payload test is
+  still blocked by an unrelated pre-existing `mdl_writer.py` source/copy
+  divergence, which was preserved.
+- The x86 DirectInput proxy rebuilt successfully and was loaded by a real K1
+  process. Its log recorded only the first two successful keyboard acquire
+  calls during startup instead of continuing to grow every frame.
+
+## 2026-08-10
+
+### [2026-08-10] add package-owned secondary-motion authoring behind read-only gates
+
+Owner: LordVaderCW
+
+Subsystem: Core.Project secondary-motion documents, Core.IO deterministic
+profile/dangly verification, Core.Workflow preview and compilation,
+Core.Validation promotion gates, GUI Display shared authoring controls, Custom
+Character/Placeable/Map Studio tool integration, and ClothDynamicsK2 read-only
+runtime profile capture.
+
+Ghost Studio now owns a versioned, unknown-field-preserving secondary-motion
+profile with mutually exclusive rigid, native-dangly, and runtime-PBD
+regions. A deterministic fixed-step preview, named driver-chain discovery,
+beginner presets, exact model-identity fields, profile sidecars, and shared
+validation gates are available to Custom Character Studio, native Character
+Builder, Placeable Builder, and authored Map Studio packages. Placeable
+sidecars remain outside MOD resources and all custom character, hair, and
+placeable runtime profiles are forcibly compiled capture-only.
+
+The raw MDL verifier independently confirms both retail dangly arrays and the
+zero-constraint anchor meaning, without relying on the known PyKotor offset
+bug. The separate Kotor Patch Manager repository now contains a bounded
+`.cdk2profile` compiler, capture-log analyzer, and isolated generic read-only
+registry source. A matching Workflow transition records a successful exact
+capture as calibrated evidence while forcing visible acceptance false and
+writes off. The compiler rejects PFBNM and all write requests. Its temporary
+x86 build was not copied, packaged, staged, or installed, so the accepted
+PFBNM DLL remains the runtime regression control.
+
+Affected files:
+
+- `docs/architecture/secondary_motion_authoring.md`
+- package-local secondary-motion owners under Core.Project, Core.IO,
+  Core.Workflow, Core.Validation, and Core.GUI.Display
+- Custom Rigged Character import/build/package/validation and both Character
+  Builder presentation payloads
+- Placeable Builder, Map Studio resource collection, authored-module export,
+  and the mirrored Scene/Tools module-controller contracts
+- affected native payload manifests, resource lists, Visual Studio projects,
+  filters, and focused regression tests
+- Kotor Patch Manager `ClothDynamicsK2Profiles.inl`, profile compiler/tests,
+  runtime call site, and cloth knowledge-base boundary
+
+Verification:
+
+- 43 focused profile, calibration, MDL dangly, Character Builder, packaging,
+  Placeable UI, and authored-resource tests passed. A combined
+  custom-character validation, authored install, and
+  payload run passed 60 cases; its one full-coverage failure is the separately
+  noted pre-existing untracked dialogue source with no native payload owner.
+- Four focused native payload byte-identity/project/filter contracts passed;
+  all seven new payload rows have their declared owner and the shared editor
+  exists only in GUI Display.
+- All seven affected native package DLL projects and the Debug x64 native host
+  built successfully. The host build verified and staged all 18 embedded
+  Python payload DLLs.
+- All changed Python modules compile. The two Character Builder panel copies,
+  two module-controller copies, and two authored-export copies are
+  byte-identical.
+- The generic ClothDynamicsK2 registry and analyzer passed 8/8 focused safety tests
+  and compiled as a temporary x86 DLL candidate. The accepted packaged DLL
+  remains SHA-256
+  `212556398413A9289F3C710A78C251A9AEE9A2D50076CF9836871D568C0E3163`.
+- PFBNM solver math passed for all six chains. The accepted capture session
+  `20260719-1212-cloth-phase2c-foot-clearance` re-audited successfully at 81
+  nodes, six chains, nine writes/144 bytes, and sampled frames through 1800.
+- A supplemental direct launch of the freshly built Debug native host visibly
+  confirmed the Custom Rigged Character ten-step workflow, its package-owned
+  Secondary Motion editor and capture-only status, and the Placeable Builder
+  Secondary Motion tab/editor. The fresh session used no source model, made no
+  write attempt, logged no errors, and exited cleanly. This does not replace
+  the required active-Visual-Studio and retail-game model proof: the handoff's
+  accepted PFBNM video is absent locally, and custom character, native hair,
+  and animated-placeable model/lifecycle captures have not passed. Those
+  missing visible gates intentionally keep their runtime writes disabled.
+
+### [2026-08-10] render every KOTOR 2 droid's authored rigid body geometry
+
+Owner: LordVaderCW
+
+Task: T2502
+
+Subsystem: Core.Rendering mesh visibility/autoframing, Core.Math model render
+bounds, ModernGL, and the software viewport fallback.
+
+KOTOR's `_g` suffix no longer hides a rigid mesh by name alone. Ghost Studio
+now treats an enabled MDL render flag plus a real diffuse texture and UV channel
+as explicit visible-surface evidence. This restores the articulated body pieces
+on K2's construction boss, medium construction droid, foreman droid, and Mark II
+mining droid while keeping real human deformation helpers such as
+`n_admrlsaulkar` hidden through their authored `render=false` state.
+
+The same rule now drives software rendering, ModernGL classification, and both
+camera-autoframe bounds paths. The software fallback also stops treating real
+droid meshes named `LHand*` or `RHand*` as empty attachment hooks.
+
+ModernGL now ignores model-authored lights that have black color or an explicit
+zero multiplier. K2's `p_t3m4` and `c_drdwar` contain zero-energy Aurora lights;
+counting those as active switched the viewport away from studio lighting while
+adding no illumination, leaving both droids nearly black.
+
+Resource resolution also supplies K2's canonical `w_rptnblstr_001` diffuse
+when an overridden assassin/war droid asks for `x_rptnblstr_001` but that image
+is absent. The install's authored `x_` model slot and TXI remain unchanged; the
+fallback only prevents the embedded blaster meshes from rendering solid white
+when a partial HQ-blaster override is present.
+
+Affected files:
+
+- `native/GhostRigger.Core.Math/Python/src/core/geometry/model_data.py`
+- `native/GhostRigger.Core.Rendering/Python/src/adapters/rendering/moderngl_renderer_impl.py`
+- `native/GhostRigger.Core.Rendering/Python/src/core/rendering/frame_core/renderer_meshes.py`
+- `native/GhostRigger.Core.Rendering/Python/src/core/rendering/gpu_scene_helpers.py`
+- Core.Rendering and Runtime.Shared copies of
+  `src/core/rendering/mesh_render_data.py`
+- Core.Resources, Runtime.Shared, and Core.Tools copies of
+  `src/core/assets/resource_manager.py`
+- `native/GhostRigger.Core.Resources/Private/Resources_Assets/ResourceManager.cpp`
+- regenerated Core.Math, Core.Rendering, and Runtime.Shared payload manifests
+- regenerated Core.Resources and Core.Tools payload manifests
+- `tests/test_regression.py`
+
+Verification:
+
+- `compare_model_pipelines`, `inspect_mdl`, and `inspect_mdl_ghostrigger`
+  agreed on `K2:c_condrdboss`; its missing geometry was isolated to renderer
+  classification rather than MDL/MDX parsing.
+- The same three pipeline checks agreed on all 45 nodes and 39 mesh nodes for
+  `K2:c_fordrd`. A real Debug viewport capture matches the installed model's
+  complete four-arm foreman-droid anatomy; its straight arms are the authored
+  bind pose rather than missing or detached geometry.
+- A read-only `appearance.2da` census covered 58 K2 droid/turret appearance rows
+  and all 35 unique model resources. Every model matched PyKotor structurally,
+  every software/ModernGL classified mesh set agreed after the fix, and all 35
+  were individually captured and visually reviewed in an actual Debug
+  `GhostStudio.exe` ModernGL viewport. That visual pass found the zero-energy
+  light issue on `p_t3m4` and `c_drdwar`; both were corrected and visibly
+  rechecked in normal Scene lighting with light/helper overlays disabled.
+- The same audit exposed white built-in weapons on `c_drdassassin` and
+  `c_drdwar`. The installed override models reference `x_rptnblstr_001`, while
+  only its TXI is installed; the canonical `w_rptnblstr_001` image is present.
+  After the preview-safe resource fallback, both repeating blasters visibly
+  render with their metal diffuse in the actual Debug ModernGL viewport.
+- Focused installed-game regressions passed 9/9, covering the four affected K2
+  droids, their full render bounds, protocol/war/mining-droid hands, and the K1
+  Saul helper control. The new zero-energy light regression failed before the
+  renderer fix and passes afterward, alongside three focused lighting-contract
+  checks. Changed Python modules also passed compilation.
+- Core.Math, Core.Rendering, and Runtime.Shared Debug x64 DLLs rebuilt
+  successfully. The shared renderer contract copies are byte-identical and the
+  focused native payload identity regression passes.
+- Core.Resources, Core.Tools, and Runtime.Shared Debug x64 DLLs also rebuilt;
+  the three resource-manager copies remain byte-identical and the native C++
+  texture-candidate contract carries the same alias as Python.
+- A separate real Debug `GhostStudio.exe` instance loaded `c_condrdboss` through
+  the normal startup workflow. The ModernGL viewport visibly showed the complete
+  textured droid at 3,559 vertices, 3,164 faces, and 23 meshes instead of the
+  reported four detached pieces at 267 vertices and 324 faces. The user's
+  already-running Ghost Studio process was left untouched.
+- Follow-up after the stale-root-launcher report: rebuilt
+  `GhostRigger.Native.Core.Host`, which ran the canonical post-build staging
+  workflow and verified all 18 manifest-owned payload DLLs beside both the root
+  developer launcher and `build/vs/x64/Debug/GhostStudio.exe`. The root and
+  Debug executables now have matching SHA-256 hashes, as do their
+  `GhostRigger.Core.Rendering.dll` payloads. The focused native-host staging
+  contract and the installed-game `c_fordrd` 37-mesh geometry regression pass.
+- Launched the exact staged root `GhostStudio.exe`, selected `K2:c_fordrd` in
+  the visible Content Browser, and loaded it through the browser's primary
+  clear-scene action. The ModernGL viewport visibly shows the complete textured,
+  animated four-arm droid at 3,328 vertices, 2,037 faces, and 37 meshes. The
+  staged-root proof is recorded in
+  `exports/validation/k2_droid_debug_app/screenshots/c_fordrd_root_staged_content_browser_window.png`.
+
+### [2026-08-10] export loaded module layouts as one OBJ mesh
+
+Owner: LordVaderCW
+
+Subsystem: Ghost Studio module export, OBJ/MTL generation, and File menu.
+
+Ghost Studio now provides **Export Full Module as One OBJ...** beside the
+existing full-module FBX command. Selecting any room in a connected module
+layout exports every room in that module group as one merged OBJ mesh while
+preserving its material assignments and writing the available texture
+sidecars. The existing clean-map OBJ option remains available for workflows
+that intentionally remove skyboxes and oversized background geometry.
+
+Ghost Studio also provides **Export Maya-Friendly Module (Room Objects)...**.
+It retains the same complete module placement but writes matching OBJ object
+and group records for every loaded room, so Maya imports the layout as 17 named
+room meshes instead of one mesh containing tens of thousands of triangle
+shells. This mode preserves the complete materials and texture sidecars.
+
+Affected files:
+
+- `native/GhostRigger.Core.IO/Python/src/io/full_module_obj_export.py`
+- `native/GhostRigger.Core.IO/Python/src/io/clean_module_obj_export.py`
+- `native/GhostRigger.Core.IO/Python/src/io/fbx/fbx_exporter.py`
+- `native/GhostRigger.Core.IO/GhostRiggerPythonPayload.json`
+- `native/GhostRigger.Core.GUI.Display/Python/src/gui/windows/application_core/shared/model_io.py`
+- `native/GhostRigger.Core.GUI.Display/Python/src/gui/windows/application_core/shared/window_chrome.py`
+- `native/GhostRigger.Core.GUI.Display/GhostRiggerPythonPayload.json`
+- `tests/test_export_job.py`
+
+Verification:
+
+- Added a routing regression covering all 17 connected `m12aa_01` rooms; it
+  failed before the command existed and passes after implementation.
+- Added an OBJ worker regression proving two room models become one OBJ object
+  while retaining both materials and writing both requested texture sidecars.
+- The full-module worker now refuses incomplete room groups, excludes OBJ helper
+  geometry, preserves materials that differ only by shininess, and stages every
+  output until cancellation checks permit publication.
+- Cancellation, unloaded-room, helper-filter, and material-identity regressions
+  pass; the cancellation case leaves no OBJ, MTL, TGA, or temporary directory.
+- Dynamic OBJ sidecars now publish as one rollback-protected set, restoring the
+  prior OBJ, MTL, and textures if any destination file is locked mid-promotion.
+- `python -m pytest tests/test_export_job.py -q` passes all 36 tests.
+- Rebuilt the Debug IO and GUI Display payloads, loaded the installed K1
+  `m12aa_01a` layout in the real root `GhostStudio.exe`, and exercised the new
+  File-menu command across all 17 connected rooms. The final OBJ contains one
+  object, 227,697 vertices, 75,899 faces, 31 matched material definitions, and
+  all 31 referenced texture files.
+- Maya 2025 imported that exact OBJ as one mesh and exported a Maya-authored
+  FBX. A fresh Maya scene reimported the FBX as one mesh with the same 227,697
+  vertices, 75,899 faces, and 720 x 720 x 720 module bounds.
+- The real Debug Maya-friendly command exported the installed K1 layout with 17
+  matching `o`/`g` room records, 75,899 faces, 31 materials, and 31 texture
+  references. Maya 2025 imported it directly as rooms `M12aa_01a` through
+  `M12aa_01q`; exact-position vertex welding reduced 227,697 corner vertices to
+  44,467 editable topology vertices without changing any faces or bounds.
+- Fresh Maya 2025 sessions reopened the native Maya ASCII result and reimported
+  its Maya-authored FBX with all 17 named room meshes, 75,899 faces, 31 texture
+  file nodes, and the same complete module bounds.
+
+## 2026-08-08
+
+### [2026-08-08] align detachable KOTOR heads from their authored neck loops
+
+Owner: LordVaderCW
+
+Subsystem: BAS-composed character normalization, rigid head attachment, Unreal
+skeletal export/import validation, and Enclave character presentation.
+
+The Enclave character normalizer now finds the closest compatible open neck
+boundary loops on each detachable head/body pairing and applies a bounded
+three-axis cosmetic correction to the head family in rest and animation
+exports. This replaces the former broad surface-band/X-only estimate, which
+could miss small source-authored Y/Z offsets hidden by the original game's
+resolution. Scene reset also purges fake-user animation actions so diagnostic
+animation comparisons cannot accidentally reuse stale Blender actions.
+
+Affected files:
+
+- `scripts/blender_batch_normalize_enclave_characters.py`
+- `scripts/blender_audit_enclave_neck_alignment.py`
+- `scripts/blender_audit_enclave_neck_boundary_alignment.py`
+- `tests/test_blender_batch_normalize_enclave_characters.py`
+
+Verification:
+
+- The six affected Enclave pairings (Crattis, Karal, Lurarka, Solaa, Zhar,
+  and Deesra) rebuilt with zero-millimeter centroid deltas across their real
+  open neck loops; front/side rest and walk-pose renders stayed coherent.
+- Unreal skeletal round trips for representative characters matched Ghost
+  Studio's source laterally at 0.00 mm, ruling out the Unreal importer before
+  the source-authored seam correction was applied.
+- The isolated Unreal V5 import produced six meshes and 42 matching animation
+  clips. All six staged actors render the V5 assets, all 16 non-target actors
+  remain on V4, and transforms, routes, movement, and dialogue state were
+  preserved.
+- The user's 431 staged ivy actors passed the placement lock before and after
+  the character swap with no additions, removals, or transform changes.
+- Focused PBR, BAS-composed export, and neck-normalization regressions passed:
+  48 tests total. The only output was the existing pytest cache warning.
+
+### [2026-08-08] generate target-correct PBR materials for Unity, Unreal, and GLB exports
+
+Owner: LordVaderCW
+
+Intersects: existing uncommitted Character Studio preset work in the shared
+native Python payload manifest/count contract.
+
+Subsystem: Core.IO model export, texture/material translation, glTF/FBX
+material bindings, and Core.Automation Unity/Unreal handoff reporting.
+
+Unity and Unreal FBX exports now generate asset-scoped BaseColor, tangent-space
+Normal, ORM, and target-native packed maps automatically. Unity also receives
+MetallicSmoothness/HDRP Mask and AO maps. Each export writes a PBR manifest with
+shader bindings, color-space/compression rules, alpha behavior, and conversion
+provenance. FBX materials carry equivalent PBR properties and texture links.
+
+GLB exports now embed BaseColor, Normal, metallic-roughness, and occlusion
+textures in both the pygltflib and dependency-free writers. Material identity,
+sampler state, alpha mode, and additive TXI behavior remain distinct. Unity and
+Unreal additive materials receive explicit additive shader contracts; glTF
+keeps the legal `BLEND` alpha mode and records the additive operation in
+GhostRigger metadata for import automation.
+
+Generated maps are isolated under `textures/<asset>/<target>/` so a later
+export cannot mutate an earlier asset that uses the same KOTOR texture. MCP
+responses inventory only artifacts produced by the current invocation, and GLB
+responses include digest-backed evidence for their embedded PBR payload.
+
+Affected files:
+
+- `native/GhostRigger.Core.IO/Python/src/core/export/pbr_materials.py`
+- Core.IO FBX/glTF exporters and Unity/Unreal sidecar manifest helpers
+- `native/GhostRigger.Core.Automation/Python/src/kotormcp/tools/ghostrigger.py`
+- regenerated Core.IO/Core.Automation embedded Python payload manifests and
+  Visual Studio resource lists
+- `tests/test_pbr_export_pipeline.py` and the focused Unreal automation fixture
+
+Verification:
+
+- Python compilation passed for all changed runtime modules and the focused
+  test module; Ruff passed for the new PBR owner module and its test file.
+- Focused PBR regressions passed (22), covering Unity/Unreal packing, both GLB
+  writers, all alpha modes, additive shader contracts, shared textures,
+  sampler state, sequential asset isolation, stale artifacts, and MCP output.
+- Related glTF/FBX/Unity/Unreal regressions passed (35 total with the focused
+  PBR suite), and targeted native payload/registry contracts passed (5).
+- A real installed K1 `PLC_bench` export succeeded through the Unity FBX,
+  Unreal FBX, and Unreal GLB automation paths. Unity reported five generated
+  maps, Unreal FBX reported three, and GLB reported one complete PBR material,
+  three embedded images, matching declared/file byte counts, and a SHA-256.
+- PyKotor and GhostRigger inspection agreed on the `PLC_Chair1` material,
+  214 vertices, and 112 faces. The full pipeline comparison still reports the
+  unrelated existing model-type discrepancy (`16` versus `32`).
+- An independent seven-person review found ten export correctness, performance,
+  automation, coverage, and standards findings; all ten were applied and a
+  separate validation pass confirmed each resolution.
+- No GUI files changed. The already-running Debug host was not restarted, so
+  the export was verified through the real automation workflow rather than a
+  visible in-app click-through.
+
+### [2026-08-08] add canonical K1/K2 character presets to the Body Attachment System
+
+Owner: LordVaderCW
+
+Task: T2002
+
+Intersects: existing uncommitted Core.IO PBR export work
+(`src/core/export/pbr_materials.py`) in the shared native payload manifest/count
+contract.
+
+Subsystem: Character Studio / Body Attachment System, Core.Tools character
+composition, and GUI Display preset selection.
+
+Added a searchable `Character Preset` mode to the shared Body Attachment System
+panel and the embedded Character Builder workflow. The preset catalog is built
+from every effective UTC template in the configured KOTOR 1 and KOTOR 2
+installations, resolves humanoid body and head variants through `appearance.2da`
+and `heads.2da`, and resolves equipped armor, masks, hand weapons, and belts
+through UTI templates and `baseitems.2da`.
+
+Preset loading is transactional: all required models are resolved before the
+active composition changes. Successful loads replace stale BAS layers, apply
+the character's canonical body/head texture variants, preserve K1/K2 resource
+provenance, and store an optional `character_preset` block in BAS recipes so a
+saved build reopens in preset mode. The catalog scan runs in a background Qt
+job so enumerating both installed games does not block the UI.
+
+The installed-data resolver now handles the retail edge cases discovered by the
+complete character audit. Legacy K2 UTCs such as Canderous can use their
+canonical K1-only body, head, equipment, textures, UTI, and `baseitems.2da`
+records with explicit per-layer provenance. Malformed localized UTI strings are
+read through a process-local tolerant scalar fallback, and inconsistent stock
+weapon-number padding is normalized. UTCs with no complete body/head model in
+either game are omitted instead of appearing as broken selections.
+
+Some non-humanoid UTC inventories contain items that the KOTOR engine does not
+render because their creature skeleton has no compatible hand, mask, or belt
+socket. Character Preset mode now keeps those canonical UTI/model references in
+recipe metadata, reports them as non-visual inventory, and skips only the
+impossible graft. This prevents droids, turrets, and similar creatures from
+failing while preserving strict missing-socket errors for manually authored BAS
+compositions.
+
+Affected files:
+
+- `native/GhostRigger.Core.Tools/Python/src/systems/bas/character_presets.py`
+- shared GUI Display/Core.Tools BAS panel, workflow, resource-loading, main
+  layout, and embedded Character Builder payloads
+- `native/GhostRigger.Core.Tools/Python/src/systems/bas/model_recipe.py`
+- `native/GhostRigger.Core.Tools/Python/src/systems/bas/preview_composer.py`
+- Core.Tools ownership documentation and BAS recipe documentation
+- native payload manifests/project resources for Core.Tools and GUI Display
+- focused regressions in `tests/test_bas_character_presets.py` and the native
+  Python payload count contract
+
+Verification:
+
+- Python compilation and Ruff checks passed for the changed owner modules and
+  focused tests. Character preset, BAS catalog, composed-preview/export, and
+  targeted payload manifest/identity/resource/project regressions passed (40).
+- A read-only census of both installed games resolved 1,553 selectable presets
+  (206 K1, 1,347 K2), with zero disabled entries and zero catalog warnings. The
+  two omitted K1 UTCs are unused/incomplete retail records with no body model or
+  no complete body/head composition in either configured game.
+- All 565 distinct body, head, and equipment models referenced by the selectable
+  catalog parsed successfully and had valid roots. The ordered socket audit
+  identified 207 engine-only inventory layers; all are now non-blocking and
+  retained as metadata, while compatible equipment still attaches normally.
+- PyKotor and GhostRigger pipeline comparisons matched Canderous's K1 body
+  (`p_candbb`), head (`p_candh`), and heavy repeating blaster
+  (`w_hvrptbltr_002`) with matching node/skin counts and no discrepancies.
+- The native Debug x64 host rebuilt successfully and staged/verified all 18
+  payload DLLs. In the actual Debug application, K2 Canderous visibly loaded
+  with the correct K1 body, head, and canonical heavy repeating blaster. The
+  stock K2 3C-FD droid also visibly loaded instead of failing on its absent
+  `rhand` socket, with the non-visual right-hand inventory reported and kept as
+  metadata.
+
+## 2026-08-06
+
+### [2026-08-06] preserve KOTOR MDX skin streams in MCP Unreal FBX exports
+
+Owner: LordVaderCW
+
+Subsystem: GhostRigger MCP installation resource handoff and Unreal FBX skin validation.
+
+Corrected the installation-backed model locator so a KOTOR model export now
+passes both members of the binary MDL/MDX pair to the loader. The discarded MDX
+companion contained the vertex streams, skin weights, and bone-palette indices;
+without it, animated creatures such as `c_brith` could be exported with a
+skeleton and curves but no authored vertex influences.
+
+Made FBX skin export fail closed when a skinned mesh has no usable bone palette,
+does not have exactly one influence row per control point, or contains
+zero-weight rows. The Unreal sidecar manifest now records vertex/skin-row counts
+and reports those failures as blocking validation errors instead of describing
+an unusable animated FBX as valid.
+
+Made every clustered skeleton ancestor an FBX `LimbNode`, including KOTOR's
+HEADER-flagged model, cutscene, and root dummies, and restored Autodesk's
+required top-level `Connections`-before-`Takes` ordering. Rigging sidecars now
+publish a versioned schema plus coordinate axes, units, animation scale, and
+the exact position/rotation controller semantics. This lets Unreal rebuild the
+original KOTOR tracks deterministically when an importer accepts the skinned
+mesh but omits or misreads ASCII-FBX animation curves.
+
+Affected files:
+
+- `native/GhostRigger.Core.Automation/Python/src/kotormcp/adapters.py`
+- `native/GhostRigger.Core.IO/Python/src/converters/mesh_converter.py`
+- `native/GhostRigger.Core.IO/Python/src/core/export/kotor_fbx_manifest.py`
+- generated native Python payloads for Automation and Core IO
+- focused regressions in `tests/test_unity_export_bridge.py`
+
+Verification:
+
+- Python compilation passed for the three changed runtime modules and tests.
+- Focused installation, FBX skin, hierarchy, sidecar-semantics, manifest, and
+  Unreal MCP export tests passed.
+- Both generated native payload ownership/byte-identity tests passed.
+- A fresh `c_brith` K1 export recovered all 472/472 weighted vertices and 17
+  palette bones; Unreal created the 21-bone skeletal mesh and rebuilt
+  `cpause1` as 20 accepted tracks with 566 keys at 30 fps and no rejected
+  tracks.
 
 ## 2026-08-05
 
@@ -28412,3 +29117,22 @@ Roadmap:
   Owner: LordVaderCW.
   Affected areas: `artifacts/xaria_teaser/`,
   `docs/knowledgebase/xaria_teaser_map_workflow.md`.
+- Fixed Ghost Studio's normalized KotOR character FBX export so texture images
+  upstream of Blender Mix nodes are discovered and materialized before FBX
+  serialization. The export now preserves distinct material families instead
+  of silently replacing head/face atlases with body atlases; the Jedi001
+  validation export correctly retains `comm_w_f01` for facial sections and
+  `PFBI01` for clothing/body sections without changing UVs, transforms, or
+  material-slot boundaries.
+  Owner: LordVaderCW.
+  Affected areas: `scripts/blender_batch_normalize_enclave_characters.py`,
+  `scripts/blender_audit_enclave_material_image_map.py`,
+  `scripts/blender_stage_enclave_material_texture_aliases.py`,
+  `tests/test_blender_batch_normalize_enclave_characters.py`,
+  `tests/test_enclave_material_family_export.py`.
+  Verification: `python -m py_compile scripts/blender_batch_normalize_enclave_characters.py scripts/blender_audit_enclave_material_image_map.py scripts/blender_stage_enclave_material_texture_aliases.py`;
+  `pytest tests/test_blender_batch_normalize_enclave_characters.py tests/test_enclave_material_family_export.py -q` (8 passed);
+  targeted Blender normalization probe produced distinct `comm_w_f01.png` and
+  `PFBI01.png`; Unreal commandlet import completed with 0 errors; editor and
+  PIE visual/material audits passed while the saved Enclave level and external
+  actor hashes remained unchanged from the recovered user-staged state.

@@ -2,14 +2,41 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from .kotor_engine_lighting import normalize_falloff_family
 
 
 SUPPORTED_LIGHTMAP_RESOLUTIONS = (64, 128, 256, 512, 768, 1024, 2048)
 SUPPORTED_LIGHTMAP_PREVIEW_RESOLUTIONS = (64, 128, 256, 512)
 SUPPORTED_LIGHTMAP_FORMATS = ("png", "tga", "jpg", "jpeg")
+
+# "ghost": Ghost Studio's artist bake ((1 - d/r)^2 falloff x 0.45, ambient floor, Reinhard tone map, gamma 2.2).
+# It suits authored maps but is not a model of the engine.  "kotor_engine": the engine's light term in stored-byte
+# units (src.core.lighting.kotor_engine_lighting): 1 / (1 + 4.5 d^2 / r^2), no tone map, no baked diffuse, linear
+# encode.  Use it to validate lights fitted from vanilla lightmaps (the game draws D * (v0 + LM)).
+LIGHTING_MODEL_GHOST = "ghost"
+LIGHTING_MODEL_KOTOR_ENGINE = "kotor_engine"
+LIGHTING_MODELS = (LIGHTING_MODEL_GHOST, LIGHTING_MODEL_KOTOR_ENGINE)
+_LIGHTING_MODEL_ALIASES = {
+    "ghost": LIGHTING_MODEL_GHOST,
+    "artist": LIGHTING_MODEL_GHOST,
+    "legacy": LIGHTING_MODEL_GHOST,
+    "kotor_engine": LIGHTING_MODEL_KOTOR_ENGINE,
+    "kotor": LIGHTING_MODEL_KOTOR_ENGINE,
+    "engine": LIGHTING_MODEL_KOTOR_ENGINE,
+    "kotor_linear": LIGHTING_MODEL_KOTOR_ENGINE,
+}
+
+
+def uses_kotor_engine_model(settings: object) -> bool:
+    """True when ``settings`` (any settings-like object) selects the KOTOR engine light model."""
+
+    key = str(getattr(settings, "lighting_model", LIGHTING_MODEL_GHOST) or LIGHTING_MODEL_GHOST).strip().lower()
+    return _LIGHTING_MODEL_ALIASES.get(key) == LIGHTING_MODEL_KOTOR_ENGINE
 
 
 @dataclass
@@ -59,6 +86,18 @@ class LightmapBakeSettings:
     generate_manifest: bool = True
     preview_after_bake: bool = True
     quality_preset: str = "standard"
+    # Light model (see LIGHTING_MODELS).  The kotor_* fields and encode_gamma apply to "kotor_engine" only.
+    lighting_model: str = LIGHTING_MODEL_GHOST
+    # Falloff family: "engine" 1/(1 + 4.5 u^2), "ghost" (1 - u)^2, "linear" 1 - u, with u = d / r.
+    kotor_falloff: str = "engine"
+    # Cut the falloff at kotor_cutoff_scale * r: 1.0 is the engine's candidate rule d/r <= 1; 0 disables the cut
+    # (the vertex program itself has none); the 003EBO interior pilot fitted best at 2.0.
+    kotor_cutoff_scale: float = 1.0
+    # The engine's vertex-program path ignores the MDL multiplier (PartLight +0x8C); True applies colour x multiplier
+    # (Ghost light intensity) as the fixed-function scene pass would.
+    kotor_apply_multiplier: bool = False
+    # Stored value = clamp(E * exposure) ** (1 / encode_gamma); 1.0 keeps the lightmap linear in stored bytes.
+    encode_gamma: float = 1.0
 
     warnings: list[str] = field(default_factory=list, repr=False)
 
@@ -109,6 +148,19 @@ class LightmapBakeSettings:
         )
         clean.include_aurora_lights = bool(clean.include_aurora_lights and clean.use_aurora_lights)
         clean.output_directory = str(clean.output_directory or "").strip()
+
+        model_key = str(clean.lighting_model or LIGHTING_MODEL_GHOST).strip().lower()
+        if model_key not in _LIGHTING_MODEL_ALIASES:
+            clean.warnings.append(f"Unknown lighting model {clean.lighting_model!r}; using {LIGHTING_MODEL_GHOST!r}.")
+        clean.lighting_model = _LIGHTING_MODEL_ALIASES.get(model_key, LIGHTING_MODEL_GHOST)
+        try:
+            clean.kotor_falloff = normalize_falloff_family(clean.kotor_falloff)
+        except ValueError:
+            clean.warnings.append(f"Unknown KOTOR falloff {clean.kotor_falloff!r}; using 'engine'.")
+            clean.kotor_falloff = "engine"
+        clean.kotor_cutoff_scale = _non_negative_float(clean.kotor_cutoff_scale, 1.0, "KOTOR cutoff scale", clean.warnings)
+        clean.kotor_apply_multiplier = bool(clean.kotor_apply_multiplier)
+        clean.encode_gamma = _positive_float(clean.encode_gamma, 1.0, "encode gamma", clean.warnings)
         return clean
 
     def validate(self) -> list[str]:
@@ -161,6 +213,30 @@ class LightmapBakeSettings:
         values.update(overrides)
         return cls(**values).normalized()
 
+    @classmethod
+    def for_kotor_engine(cls, **overrides: Any) -> "LightmapBakeSettings":
+        """Settings for a KOTOR forward-model bake: the engine light term, linear, in stored-byte units.
+
+        Diffuse is not baked (the game multiplies the diffuse texture at draw time), there is no synthetic ambient or
+        indirect term, and the solve runs on the CPU in float64 so results do not depend on the GPU.
+        """
+
+        values: dict[str, Any] = {
+            "lighting_model": LIGHTING_MODEL_KOTOR_ENGINE,
+            "include_diffuse": False,
+            "include_ambient": False,
+            "use_indirect_approximation": False,
+            "use_gpu_acceleration": False,
+            "exposure": 1.0,
+            "encode_gamma": 1.0,
+            "kotor_falloff": "engine",
+            "kotor_cutoff_scale": 1.0,
+            "kotor_apply_multiplier": False,
+            "quality_preset": "custom",
+        }
+        values.update(overrides)
+        return cls(**values).normalized()
+
     def output_dir_path(self) -> Path:
         return Path(self.output_directory or "exports/lightmaps")
 
@@ -178,8 +254,8 @@ def _positive_float(value: object, fallback: float, label: str, warnings: list[s
     except (TypeError, ValueError):
         warnings.append(f"Invalid {label}; using {fallback}.")
         return fallback
-    if parsed <= 0.0:
-        warnings.append(f"{label} must be greater than zero; using {fallback}.")
+    if not math.isfinite(parsed) or parsed <= 0.0:
+        warnings.append(f"{label} must be a finite number greater than zero; using {fallback}.")
         return fallback
     return parsed
 
@@ -190,7 +266,7 @@ def _non_negative_float(value: object, fallback: float, label: str, warnings: li
     except (TypeError, ValueError):
         warnings.append(f"Invalid {label}; using {fallback}.")
         return fallback
-    if parsed < 0.0:
-        warnings.append(f"{label} must be non-negative; using {fallback}.")
+    if not math.isfinite(parsed) or parsed < 0.0:
+        warnings.append(f"{label} must be a finite non-negative number; using {fallback}.")
         return fallback
     return parsed

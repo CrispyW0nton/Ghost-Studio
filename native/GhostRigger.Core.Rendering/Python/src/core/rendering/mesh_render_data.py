@@ -318,6 +318,24 @@ def _node_is_renderable_mesh(node) -> bool:
     return bool(getattr(node, "vertices", getattr(node, "verts", [])) and getattr(node, "faces", []))
 
 
+def _node_has_renderable_rigid_surface(node) -> bool:
+    """Return whether a rigid MDL node explicitly describes visible geometry.
+
+    Odyssey's ``_g`` suffix is used both by hidden deformation helpers and by
+    visible rigid body segments on several KOTOR 2 droids.  The authored render
+    flag, diffuse texture, and UV channel together are stronger evidence than
+    that naming convention alone.
+    """
+    if node is None or bool(getattr(node, "is_skin", False)):
+        return False
+    if getattr(node, "render", True) is False:
+        return False
+    texture = _clean_tex_name(getattr(node, "texture", "") or "")
+    if not texture or texture == "****":
+        return False
+    return bool(getattr(node, "uvs", []) or [])
+
+
 def _node_vertices_are_model_world(node) -> bool:
     if bool(getattr(node, "_gr_vertices_in_kotor_world", False)):
         return True

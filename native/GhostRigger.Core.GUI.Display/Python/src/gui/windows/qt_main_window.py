@@ -951,6 +951,23 @@ class QtGhostRiggerMainWindow(
                     f"{type(exc).__name__}",
                     "warning",
                 )
+        self._start_optional_kaigen_gui_control()
+
+    def _start_optional_kaigen_gui_control(self) -> None:
+        # Opt-in, HMAC-authenticated Kaigen channel (GHOSTSTUDIO_KAIGEN_CONTROL_PATH).
+        if getattr(self, "_kaigen_gui_control", None) is not None:
+            return
+        if not os.environ.get("GHOSTSTUDIO_KAIGEN_CONTROL_PATH"):
+            return
+        try:
+            from src.gui.windows.application_core.shared.kaigen_control import (
+                start_kaigen_gui_control,
+            )
+
+            self._kaigen_gui_control = start_kaigen_gui_control(self)
+        except Exception as exc:
+            self._kaigen_gui_control = None
+            self._log(f"Kaigen GUI control disabled: {type(exc).__name__}", "warning")
 
     def _enable_theme_progress_toasts(self) -> None:
         self._suppress_theme_progress_toast = False

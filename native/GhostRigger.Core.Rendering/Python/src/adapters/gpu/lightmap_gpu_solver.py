@@ -6,6 +6,7 @@ import logging
 
 import numpy as np
 
+from src.core.lighting.lightmap_bake_settings import uses_kotor_engine_model
 from src.core.lighting.lightmap_lighting_solver import LightmapLightingSolver
 
 log = logging.getLogger(__name__)
@@ -98,14 +99,17 @@ void main() {{
                         else if (dotv > outer) spot = (dotv - outer) / max(inner - outer, 0.00001);
                         contrib *= spot;
                     }} else if (kind == 3) {{
-                        contrib *= 0.775;
+                        // Same area scale as the CPU solver: 0.75 + min(size, 10) * 0.025.
+                        contrib *= 0.75 + min(max(extra.y, 0.0), 10.0) * 0.025;
                     }}
                     rgb += contrib;
                 }}
             }}
         }}
     }}
-    frag = vec4(max(rgb, vec3(0.0)), 1.0);
+    // No clamp here: negative (darkening) lights must offset ambient exactly as on the CPU path; the float
+    // target keeps the sign and apply_exposure_gamma clamps the final value.
+    frag = vec4(rgb, 1.0);
 }}
 """
 
@@ -132,6 +136,13 @@ class LightmapGpuSolver:
         self.last_warning = ""
         self.last_info = ""
         active_lights = [light for light in lights if self.cpu_solver._include_light(light, settings)]
+        if uses_kotor_engine_model(settings):
+            # The KOTOR forward model is evaluated on the CPU in float64 so validation results do not depend on
+            # the GPU or its driver.
+            result = self.cpu_solver.solve_buffer(buffer, active_lights, settings, shadow_solver)
+            self.last_warning = str(getattr(self.cpu_solver, "last_warning", "") or "")
+            self.last_info = f"CPU lightmap solve used. {getattr(self.cpu_solver, 'last_info', '') or ''}".strip()
+            return result
         if not self.can_use_gpu(settings, shadow_solver):
             if not self.last_info:
                 self.last_info = "CPU lightmap solve used."
@@ -191,12 +202,14 @@ class LightmapGpuSolver:
                 result += self._render_direct_chunk(pos_tex, normal_tex, lights[start : start + _MAX_GPU_LIGHTS], res, settings)
 
         valid = buffer.valid_mask
+        # Mirror LightmapLightingSolver.solve_buffer exactly so a bake does not depend on GPU availability.
         if settings.include_ambient and valid.any():
             result[valid] += self.cpu_solver.solve_ambient({}, settings)
         if settings.use_indirect_approximation and valid.any():
-            result[valid] += 0.08 * buffer.base_diffuse[valid]
+            result[valid] += 0.08 * float(getattr(settings, "indirect_strength", 1.0)) * buffer.base_diffuse[valid]
         if settings.include_diffuse and valid.any():
-            result[valid] *= buffer.base_diffuse[valid]
+            strength = float(getattr(settings, "diffuse_strength", 1.0))
+            result[valid] *= (1.0 - strength) + buffer.base_diffuse[valid] * strength
         result[valid] = self.cpu_solver.apply_exposure_gamma(result[valid], settings)
         result[~valid] = 0.0
         self.last_info = f"GPU direct-light solve used ModernGL backend '{self.last_backend}' for {len(lights)} light(s)."
@@ -208,7 +221,7 @@ class LightmapGpuSolver:
         return result
 
     def _render_direct_chunk(self, pos_tex, normal_tex, lights, res: int, settings) -> np.ndarray:
-        light_pos_radius, light_color_intensity, light_dir_kind, light_extra = self._pack_lights(lights)
+        light_pos_radius, light_color_intensity, light_dir_kind, light_extra = self._pack_lights(lights, settings)
         light_pos_tex = self._tex2d(light_pos_radius)
         light_color_tex = self._tex2d(light_color_intensity)
         light_dir_tex = self._tex2d(light_dir_kind)
@@ -254,20 +267,26 @@ class LightmapGpuSolver:
         tex.repeat_y = False
         return tex
 
-    def _pack_lights(self, lights) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    def _pack_lights(self, lights, settings=None) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         pos_radius = np.zeros((1, _MAX_GPU_LIGHTS, 4), dtype=np.float32)
         color_intensity = np.zeros((1, _MAX_GPU_LIGHTS, 4), dtype=np.float32)
         dir_kind = np.zeros((1, _MAX_GPU_LIGHTS, 4), dtype=np.float32)
         extra = np.zeros((1, _MAX_GPU_LIGHTS, 4), dtype=np.float32)
+        # CPU parity: point/spot/area radii scale by light_falloff_multiplier and ambient lights by ambient_strength.
+        radius_scale = max(0.001, float(getattr(settings, "light_falloff_multiplier", 1.0)))
+        ambient_strength = float(getattr(settings, "ambient_strength", 1.0))
         for idx, light in enumerate(lights[:_MAX_GPU_LIGHTS]):
             pos = _vec3(getattr(light, "position", (0.0, 0.0, 0.0)))
             color = _vec3(getattr(light, "color", getattr(light, "light_color", (1.0, 1.0, 1.0))), (1.0, 1.0, 1.0))
             direction = _vec3(getattr(light, "direction", (0.0, -1.0, -1.0)), (0.0, -1.0, -1.0))
             kind = _kind_code(light)
+            intensity = max(0.0, float(getattr(light, "intensity", getattr(light, "light_multiplier", 1.0)) or 0.0))
+            if kind == 4:
+                intensity *= ambient_strength
             pos_radius[0, idx, :3] = pos
-            pos_radius[0, idx, 3] = max(float(getattr(light, "radius", getattr(light, "light_radius", 5.0)) or 5.0), 0.001)
+            pos_radius[0, idx, 3] = max(float(getattr(light, "radius", getattr(light, "light_radius", 5.0)) or 5.0), 0.001) * radius_scale
             color_intensity[0, idx, :3] = color
-            color_intensity[0, idx, 3] = max(0.0, float(getattr(light, "intensity", getattr(light, "light_multiplier", 1.0)) or 0.0))
+            color_intensity[0, idx, 3] = intensity
             dir_kind[0, idx, :3] = direction
             dir_kind[0, idx, 3] = float(kind)
             extra[0, idx, 0] = max(1.0, min(179.0, float(getattr(light, "cone_angle", 45.0) or 45.0)))

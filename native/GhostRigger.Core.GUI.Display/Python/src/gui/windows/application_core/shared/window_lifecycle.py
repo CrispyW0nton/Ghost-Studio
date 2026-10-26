@@ -428,6 +428,13 @@ class WindowLifecycleMixin:
                 scripting_ipc_server.stop()
         except Exception:
             pass
+        try:
+            kaigen_control = getattr(self, "_kaigen_gui_control", None)
+            self._kaigen_gui_control = None
+            if kaigen_control is not None:
+                kaigen_control.stop()
+        except Exception:
+            pass
         super().closeEvent(event)
     def _install_gui_log_handler(self) -> None:
         if self._gui_log_handler is not None or not hasattr(self, "log_panel"):

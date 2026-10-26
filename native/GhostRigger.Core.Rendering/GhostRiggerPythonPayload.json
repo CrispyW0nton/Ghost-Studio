@@ -21,7 +21,7 @@
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_GPU_LIGHTMAP_GPU_SOLVER",
             "source_path": "src/adapters/gpu/lightmap_gpu_solver.py",
             "packaged_path": "Python/src/adapters/gpu/lightmap_gpu_solver.py",
-            "sha256": "9ea894f8f1638f94e8c06cc9930c383e38acfbcb9980e64f76d2c390e3966b9d"
+            "sha256": "b06814e84f235501db41bec1da1b15f5469a4b6d0dc74902af020546e072cb48"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_GPU_MODERNGL_CONTEXT",
@@ -99,13 +99,13 @@
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_MODERNGL_RENDERER_IMPL",
             "source_path": "src/adapters/rendering/moderngl_renderer_impl.py",
             "packaged_path": "Python/src/adapters/rendering/moderngl_renderer_impl.py",
-            "sha256": "92dea51630f6a409d17be3b789eb7b75b228367331757d38d8f20476a9344fc3"
+            "sha256": "1ba4a14a6d9dea44fd7db1ca1f57deffd6344386e1664c993761755558770128"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_MODERNGL_RESOURCES",
             "source_path": "src/adapters/rendering/moderngl_resources.py",
             "packaged_path": "Python/src/adapters/rendering/moderngl_resources.py",
-            "sha256": "c162e337fc938fe7ea1e1c0ac950d5d35481eccbc8bd24738bce1d07e4a876e0"
+            "sha256": "eeabb64ada15fbb7816011b17fba268529521c1ec1eef712b8820c14e35b74a4"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_MODERNGL_SCENE_HELPERS",
@@ -135,7 +135,7 @@
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_PYGFX_CORE_MESH_CACHE",
             "source_path": "src/adapters/rendering/pygfx_core/mesh_cache.py",
             "packaged_path": "Python/src/adapters/rendering/pygfx_core/mesh_cache.py",
-            "sha256": "23fb8533069e4ed7bdd068c74b4ed609e9da4c39b02b1b122d0d4be3d0314f57"
+            "sha256": "346c57d0ef2a02e9e46e4d293005f7c3e9b49e9645d48ffeeacd7218d1808da8"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_PYGFX_CORE_RENDERER",
@@ -297,7 +297,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_BAKE_SETTINGS",
             "source_path": "src/core/lighting/lightmap_bake_settings.py",
             "packaged_path": "Python/src/core/lighting/lightmap_bake_settings.py",
-            "sha256": "1ae2166bd893626780996e5c4810dbe519cb4c6f8396b2ab4598d7b9ea7b1e1e"
+            "sha256": "c576334fa1e27cb58e075c35e986c16639e36bd959aff06ae3095ccd9f69a17d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_BAKER",
@@ -333,7 +333,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_LIGHTING_SOLVER",
             "source_path": "src/core/lighting/lightmap_lighting_solver.py",
             "packaged_path": "Python/src/core/lighting/lightmap_lighting_solver.py",
-            "sha256": "4e6181bf409d9641736a4f0f97dc07eca1d8fc2aa10b3176b633fb149279deff"
+            "sha256": "858e66300453a3515d8898b3d8226f59247ce8943fca466b982469390f430cbb"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_MANIFEST",
@@ -393,7 +393,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_PREVIEW_CACHE",
             "source_path": "src/core/lighting/preview_cache.py",
             "packaged_path": "Python/src/core/lighting/preview_cache.py",
-            "sha256": "7cbacb2ee6e2d75a5c021579c8f0dd1af0a43cf28eb53e2fde72132d26a6b40c"
+            "sha256": "56b301e98eaa472f17a293d8457a8dcb7c83af06183c5bd1e1bc195b99c19156"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_RAYCAST_BACKEND",
@@ -573,7 +573,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_FRAME_CORE_RENDERER_MESHES",
             "source_path": "src/core/rendering/frame_core/renderer_meshes.py",
             "packaged_path": "Python/src/core/rendering/frame_core/renderer_meshes.py",
-            "sha256": "d82723b97f2e10a060fd004568e98a28082894b05feaa87eeefde5097a340067"
+            "sha256": "3b594d9a8fee0dc8f0e0adf089ad3dc07a5db694be654065dfa6bd0313ad2b6b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_FRAME_CORE_RENDERER_OVERLAYS",
@@ -627,7 +627,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_GPU_SCENE_HELPERS",
             "source_path": "src/core/rendering/gpu_scene_helpers.py",
             "packaged_path": "Python/src/core/rendering/gpu_scene_helpers.py",
-            "sha256": "a04e709ae1bfd36ebaad2af28b479303f29840e19a8ccff58a984eab03aaebec"
+            "sha256": "b468f0209f2932d4db1510b449227f57eca2fbe55567b43d03f9cb90856c0b3e"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_GPU_SHADERS",
@@ -657,7 +657,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_MESH_RENDER_DATA",
             "source_path": "src/core/rendering/mesh_render_data.py",
             "packaged_path": "Python/src/core/rendering/mesh_render_data.py",
-            "sha256": "3e09d899b6a7fca380a1fe3e7bf2a249e69cee8306eec58476fffa0dba0e4cbe"
+            "sha256": "865582af0f41c134115ae8f04867806f78f6fd93bf5911a9c1244ebf9ddfd53d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_PICKING",

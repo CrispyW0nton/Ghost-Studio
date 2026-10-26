@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,9 @@ from kotormcp.game_dinput_hook import (
 
 K2_WINDOW_TITLE = "Star Wars: Knights of the Old Republic II: The Sith Lords"
 K1_WINDOW_TITLE = "Star Wars: Knights of the Old Republic"
+
+K2_EXE_NAME = "swkotor2.exe"
+K1_EXE_NAME = "swkotor.exe"
 
 
 class KotorInputError(RuntimeError):
@@ -120,6 +124,7 @@ KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_SCANCODE = 0x0008
 SW_RESTORE = 9
 SPI_GETWORKAREA = 0x0030
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
 
 SCAN_ENTER = 0x1C
@@ -181,6 +186,20 @@ def default_window_title(game: Optional[str]) -> str:
     return K2_WINDOW_TITLE
 
 
+def expected_exe_name(game: Optional[str]) -> str:
+    text = str(game or "k2").strip().lower()
+    if text in {"k1", "swkotor", "kotor1"}:
+        return K1_EXE_NAME
+    return K2_EXE_NAME
+
+
+def _normcase_path(path: str) -> str:
+    try:
+        return os.path.normcase(os.path.realpath(str(path)))
+    except OSError:
+        return os.path.normcase(str(path))
+
+
 class KotorWindowInput:
     """Route real Win32 input to the KOTOR foreground window.
 
@@ -194,9 +213,23 @@ class KotorWindowInput:
         window_title: Optional[str] = None,
         *,
         game: Optional[str] = "k2",
+        install_path: Optional[str | Path] = None,
         dinput_hook_root: Optional[str | Path] = None,
     ) -> None:
+        # The window is identified by the exact process image path of the game
+        # executable inside install_path, never by title alone.  A title-only
+        # match (the previous behaviour) let any window named like "Star Wars"
+        # receive real input; identity here binds every event to the running
+        # swkotor/swkotor2 process of the named installation.
         self.window_title = window_title or default_window_title(game)
+        self.game = str(game or "k2")
+        self.exe_name = expected_exe_name(game)
+        self.install_path = str(install_path) if install_path else None
+        self.expected_exe_path = (
+            _normcase_path(os.path.join(str(install_path), self.exe_name))
+            if install_path
+            else None
+        )
         self.dinput_hook_root = Path(dinput_hook_root) if dinput_hook_root else None
         self._user32 = ctypes.WinDLL("user32", use_last_error=True)
         self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
@@ -252,25 +285,55 @@ class KotorWindowInput:
         ]
         self._user32.SystemParametersInfoW.restype = wintypes.BOOL
         self._kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+        self._kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        self._kernel32.OpenProcess.restype = wintypes.HANDLE
+        self._kernel32.QueryFullProcessImageNameW.argtypes = [
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            wintypes.LPWSTR,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        self._kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        self._kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        self._kernel32.CloseHandle.restype = wintypes.BOOL
+
+    def window_pid(self, hwnd: int) -> int:
+        pid = wintypes.DWORD(0)
+        self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        return int(pid.value)
+
+    def process_image_path(self, pid: int) -> Optional[str]:
+        if not pid:
+            return None
+        handle = self._kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            return None
+        try:
+            size = wintypes.DWORD(32768)
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if self._kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                return buffer.value
+            return None
+        finally:
+            self._kernel32.CloseHandle(handle)
+
+    def _identity_matches(self, hwnd: int) -> bool:
+        # A window belongs to the game only when its owning process image is
+        # exactly <install_path>/<exe_name>.  Identity is mandatory: without a
+        # resolved installation there is no window to drive.
+        if not self.expected_exe_path:
+            return False
+        image = self.process_image_path(self.window_pid(hwnd))
+        return bool(image) and _normcase_path(image) == self.expected_exe_path
 
     def find_window(self) -> Optional[int]:
-        hwnd = int(self._user32.FindWindowW(None, self.window_title) or 0)
-        if hwnd:
-            return hwnd
-        needle = self.window_title.lower()
         found: list[int] = []
 
         @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
         def callback(candidate: int, _lparam: int) -> bool:
             if not self._user32.IsWindowVisible(candidate):
                 return True
-            length = int(self._user32.GetWindowTextLengthW(candidate))
-            if length <= 0:
-                return True
-            buffer = ctypes.create_unicode_buffer(length + 1)
-            self._user32.GetWindowTextW(candidate, buffer, length + 1)
-            title = buffer.value.lower()
-            if needle in title or title in needle:
+            if self._identity_matches(int(candidate)):
                 found.append(int(candidate))
                 return False
             return True
@@ -279,9 +342,15 @@ class KotorWindowInput:
         return found[0] if found else None
 
     def require_window(self) -> int:
+        if not self.expected_exe_path:
+            raise KotorInputError(
+                "KOTOR input requires a resolved installation; no game executable to match against."
+            )
         hwnd = self.find_window()
         if not hwnd:
-            raise KotorInputError(f"KOTOR window was not found: {self.window_title}")
+            raise KotorInputError(
+                f"No live window whose process is {self.expected_exe_path} was found."
+            )
         return hwnd
 
     def window_title_text(self, hwnd: Optional[int] = None) -> str:
@@ -301,21 +370,36 @@ class KotorWindowInput:
         return WindowRect(rect.left, rect.top, rect.right, rect.bottom)
 
     def status(self) -> dict[str, Any]:
+        if not self.expected_exe_path:
+            return {
+                "window_found": False,
+                "window_title": self.window_title,
+                "hwnd": 0,
+                "expected_exe_path": None,
+                "identity_ok": False,
+                "identity_error": "No resolved installation to match the game process against.",
+            }
         hwnd = self.find_window()
         if not hwnd:
             return {
                 "window_found": False,
                 "window_title": self.window_title,
                 "hwnd": 0,
+                "expected_exe_path": self.expected_exe_path,
+                "identity_ok": False,
             }
         pid = wintypes.DWORD(0)
         thread_id = int(self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid)))
+        image = self.process_image_path(int(pid.value))
         foreground = int(self._user32.GetForegroundWindow() or 0)
         return {
             "window_found": True,
             "window_title": self.window_title_text(hwnd),
             "hwnd": hwnd,
             "process_id": int(pid.value),
+            "process_path": image,
+            "expected_exe_path": self.expected_exe_path,
+            "identity_ok": bool(image) and _normcase_path(image) == self.expected_exe_path,
             "thread_id": thread_id,
             "foreground_hwnd": foreground,
             "is_foreground": foreground == hwnd,
@@ -531,6 +615,14 @@ class KotorWindowInput:
         hwnd = self.require_window()
         focus = self.activate() if activate else self.status()
         time.sleep(max(0.0, float(settle_seconds or 0.0)))
+        # The grab reads screen pixels at the window's rectangle, so any window
+        # stacked over the game would otherwise land in the image.  The
+        # identified game window must be foreground first, or the capture is
+        # refused rather than recording whatever is on top of it.
+        if int(self._user32.GetForegroundWindow() or 0) != hwnd:
+            raise KotorInputError(
+                "The identified KOTOR window is not foreground; capture refused to avoid recording overlapping windows."
+            )
         rect = self._capture_rect(hwnd, region)
         if clip_to_work_area:
             rect = self._intersect_rect(rect, self._work_area_rect())
@@ -550,6 +642,8 @@ class KotorWindowInput:
             "region": str(region or "client"),
             "clip_to_work_area": bool(clip_to_work_area),
             "rect": rect.as_dict(),
+            "process_path": self.process_image_path(self.window_pid(hwnd)),
+            "expected_exe_path": self.expected_exe_path,
             "focus": focus,
         }
 

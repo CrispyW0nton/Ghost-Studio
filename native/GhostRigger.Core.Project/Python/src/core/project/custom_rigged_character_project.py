@@ -17,11 +17,12 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from .ghostrigger_project import stable_project_id, utc_now_iso
+from .secondary_motion_profile import SecondaryMotionProfile, default_secondary_motion_profile
 
 
 CUSTOM_RIGGED_CHARACTER_FILE_TYPE = "ghostrigger.custom_rigged_character"
 CUSTOM_RIGGED_CHARACTER_FILE_SUFFIX = ".ghostcharacter.json"
-CURRENT_CUSTOM_RIGGED_CHARACTER_SCHEMA_VERSION = 3
+CURRENT_CUSTOM_RIGGED_CHARACTER_SCHEMA_VERSION = 4
 CUSTOM_CREATURE_BEHAVIOR_PROFILE_SCHEMA = "ghostrigger.custom_creature_behavior_profile.v1"
 BUILDER_MODE_CUSTOM_RIGGED = "custom_rigged_character"
 BUILDER_MODE_NATIVE_KOTOR = "native_kotor_character"
@@ -33,6 +34,7 @@ CUSTOM_RIGGED_WORKFLOW_STEPS = (
     "animation_library",
     "animation_preparation",
     "materials_uvs",
+    "secondary_motion",
     "gameplay",
     "validate_build",
     "install_test",
@@ -295,6 +297,7 @@ class CustomRiggedCharacterProject:
     )
     animation_mappings: list[AnimationMapping] = field(default_factory=list)
     material_assignments: list[MaterialAssignment] = field(default_factory=list)
+    secondary_motion: dict[str, Any] = field(default_factory=default_secondary_motion_profile)
     creature_sound_cues: list[CreatureSoundCue] = field(default_factory=list)
     appearance_settings: dict[str, Any] = field(default_factory=dict)
     utc_settings: dict[str, Any] = field(default_factory=dict)
@@ -337,6 +340,7 @@ class CustomRiggedCharacterProject:
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)
     metadata: dict[str, Any] = field(default_factory=dict)
+    extra_fields: dict[str, Any] = field(default_factory=dict, repr=False)
     schema_version: int = CURRENT_CUSTOM_RIGGED_CHARACTER_SCHEMA_VERSION
     file_type: str = CUSTOM_RIGGED_CHARACTER_FILE_TYPE
     _project_file_path: str = field(default="", init=False, repr=False, compare=False)
@@ -347,7 +351,8 @@ class CustomRiggedCharacterProject:
         return resolve_project_path(value, self._project_file_path or None)
 
     def to_dict(self, project_file: str | Path | None = None) -> dict[str, Any]:
-        return {
+        payload = dict(self.extra_fields)
+        payload.update({
             "file_type": self.file_type,
             "schema_version": int(self.schema_version),
             "project_id": self.project_id,
@@ -381,6 +386,7 @@ class CustomRiggedCharacterProject:
             },
             "animation_mappings": [value.to_dict(project_file) for value in self.animation_mappings],
             "material_assignments": [value.to_dict(project_file) for value in self.material_assignments],
+            "secondary_motion": SecondaryMotionProfile.from_dict(self.secondary_motion).to_dict(),
             "gameplay": {
                 "appearance": dict(self.appearance_settings),
                 "utc": dict(self.utc_settings),
@@ -401,7 +407,8 @@ class CustomRiggedCharacterProject:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "metadata": dict(self.metadata),
-        }
+        })
+        return payload
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "CustomRiggedCharacterProject":
@@ -452,6 +459,10 @@ class CustomRiggedCharacterProject:
             native_template_model=str(rig.get("native_template_model") or ""),
             animation_mappings=[AnimationMapping.from_dict(value) for value in data.get("animation_mappings") or ()],
             material_assignments=[MaterialAssignment.from_dict(value) for value in data.get("material_assignments") or ()],
+            secondary_motion=SecondaryMotionProfile.from_dict(
+                data.get("secondary_motion")
+                or default_secondary_motion_profile(target_game=str(data.get("target_game") or "K2"))
+            ).to_dict(),
             creature_sound_cues=[
                 CreatureSoundCue.from_dict(value)
                 for value in gameplay.get("creature_sounds") or ()
@@ -494,6 +505,18 @@ class CustomRiggedCharacterProject:
             created_at=str(data.get("created_at") or utc_now_iso()),
             updated_at=str(data.get("updated_at") or utc_now_iso()),
             metadata=dict(data.get("metadata") or {}),
+            extra_fields={
+                str(key): value
+                for key, value in data.items()
+                if key not in {
+                    "file_type", "schema_version", "project_id", "builder_mode", "creature_name",
+                    "resource_name", "target_game", "source_assets", "output_project_folder",
+                    "recent_paths", "import_coordinate_system", "model_placement", "rig",
+                    "animation_mappings", "material_assignments", "secondary_motion", "gameplay",
+                    "custom_animation_registrations", "build", "last_import_summary", "workflow_steps",
+                    "created_at", "updated_at", "metadata",
+                }
+            },
             schema_version=int(data.get("schema_version") or 0),
             file_type=str(data.get("file_type") or ""),
         )
@@ -600,6 +623,20 @@ def migrate_custom_rigged_character_payload(raw: Mapping[str, Any]) -> dict[str,
     if version == 2:
         data.setdefault("gameplay", {}).setdefault("creature_sounds", [])
         data["schema_version"] = 3
+        version = 3
+    if version == 3:
+        data.setdefault(
+            "secondary_motion",
+            default_secondary_motion_profile(target_game=str(data.get("target_game") or "K2")),
+        )
+        steps = [str(step) for step in data.get("workflow_steps") or CUSTOM_RIGGED_WORKFLOW_STEPS]
+        if "secondary_motion" not in steps:
+            try:
+                steps.insert(steps.index("materials_uvs") + 1, "secondary_motion")
+            except ValueError:
+                steps.append("secondary_motion")
+        data["workflow_steps"] = steps
+        data["schema_version"] = 4
     if data.get("file_type") != CUSTOM_RIGGED_CHARACTER_FILE_TYPE:
         raise ValueError("File is not a GhostRigger custom-rigged character project.")
     if int(data.get("schema_version") or 0) != CURRENT_CUSTOM_RIGGED_CHARACTER_SCHEMA_VERSION:

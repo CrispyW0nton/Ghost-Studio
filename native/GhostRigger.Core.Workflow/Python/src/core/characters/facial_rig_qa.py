@@ -273,10 +273,25 @@ def score_facial_range(
     ah = report.samples.get(3)
     oh = report.samples.get(4)
     closed = report.samples.get(11)
-    if ah is None or ah.aperture_delta < report.aperture_floor:
+    # Surface-transfer and binary float rounding can put an otherwise visible
+    # opening a few micrometres below this heuristic floor.  Keep a tightly
+    # bounded 0.2% tolerance, report the near miss, and continue to reject
+    # materially undersized AH/OH shapes.
+    aperture_tolerance = max(1.0e-5, report.aperture_floor * 0.002)
+    if (
+        ah is None
+        or ah.aperture_delta + aperture_tolerance < report.aperture_floor
+    ):
         report.failures.append("ah_aperture_too_small")
-    if oh is None or oh.aperture_delta < report.aperture_floor:
+    elif ah.aperture_delta < report.aperture_floor:
+        report.warnings.append("ah_aperture_near_floor")
+    if (
+        oh is None
+        or oh.aperture_delta + aperture_tolerance < report.aperture_floor
+    ):
         report.failures.append("oh_aperture_too_small")
+    elif oh.aperture_delta < report.aperture_floor:
+        report.warnings.append("oh_aperture_near_floor")
     if (
         ah is not None
         and closed is not None

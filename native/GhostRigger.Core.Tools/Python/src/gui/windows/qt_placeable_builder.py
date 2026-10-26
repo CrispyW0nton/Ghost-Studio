@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
+from src.core.project.secondary_motion_profile import default_secondary_motion_profile
+from src.gui.panels.qt_secondary_motion_editor import QtSecondaryMotionEditor
 
 from src.core.rendering.renderer_settings import RendererSettings
 from src.core.rendering.viewport_navigation import DEFAULT_VIEWPORT_NAVIGATION_PROFILE
@@ -652,6 +654,7 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
         pages = (
             (self._build_identity_tab(), "Identity"),
             (self._build_visual_tab(), "Visual"),
+            (self._build_secondary_motion_tab(), "Secondary Motion"),
             (self._build_interaction_tab(), "Interaction"),
             (self._build_scripts_tab(), "Scripts / Conversation"),
             (self._build_particles_tab(), "Particles"),
@@ -668,6 +671,15 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
         tabs.tabBar().setExpanding(False)
         tabs.tabBar().setElideMode(QtCore.Qt.ElideNone)
         return tabs
+
+    def _build_secondary_motion_tab(self) -> QtWidgets.QWidget:
+        self.secondary_motion_editor = QtSecondaryMotionEditor(
+            self,
+            target_kind="placeable",
+            target_game="K2",
+        )
+        self.secondary_motion_editor.profileChanged.connect(self._document_edited)
+        return self.secondary_motion_editor
 
     @staticmethod
     def _scroll_tab(content: QtWidgets.QWidget, name: str) -> QtWidgets.QScrollArea:
@@ -1212,6 +1224,10 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
             self.template_resref_edit.setText(str(data.get("template_resref") or ""))
             self.tag_edit.setText(str(data.get("tag") or ""))
             self.game_combo.setCurrentText(str(data.get("game") or "K2").upper())
+            self.secondary_motion_editor.set_profile(
+                _mapping(data.get("secondary_motion"))
+                or default_secondary_motion_profile(target_game=str(data.get("game") or "K2"))
+            )
             self._set_combo_data(self.category_combo, str(data.get("category") or "decor").lower())
             self.description_edit.setPlainText(str(data.get("description") or ""))
             self.comment_edit.setText(str(data.get("comment") or ""))
@@ -1286,7 +1302,7 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
         data.update(
             {
                 "file_type": str(data.get("file_type") or "ghostrigger.placeable_asset"),
-                "schema_version": int(data.get("schema_version") or 1),
+                "schema_version": int(data.get("schema_version") or 2),
                 "asset_id": str(data.get("asset_id") or ""),
                 "game": self.game_combo.currentText().upper(),
                 "template_resref": self.template_resref_edit.text().strip().lower(),
@@ -1357,6 +1373,8 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
             }
         )
         data["resources"] = resources
+        self.secondary_motion_editor.set_target_game(game)
+        data["secondary_motion"] = self.secondary_motion_editor.profile()
         base_resref = self.base_template_edit.text().strip()
         if base_resref:
             existing = deepcopy(self._base_template_passthrough or {})
@@ -1427,7 +1445,7 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
                 item.setToolTip(2, fix_hint)
             self.validation_issues_tree.addTopLevelItem(item)
         if reveal:
-            self.inspector_tabs.setCurrentWidget(self.inspector_tabs.widget(6))
+            self.inspector_tabs.setCurrentWidget(self.inspector_tabs.widget(7))
         self.statusBar().showMessage("Placeable validation updated.", 4000)
 
     def readiness_snapshot(self) -> dict[str, Any]:
@@ -1510,7 +1528,7 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
     def _reset_document(self, *, emit_request: bool) -> None:
         blank = {
             "file_type": "ghostrigger.placeable_asset",
-            "schema_version": 1,
+            "schema_version": 2,
             "asset_id": "",
             "game": "K2",
             "template_resref": "",
@@ -1527,6 +1545,7 @@ class QtPlaceableBuilderWindow(QtWidgets.QMainWindow):
             "base_template": None,
             "base_evidence": None,
             "appearance_evidence": None,
+            "secondary_motion": default_secondary_motion_profile(target_game="K2"),
             "metadata": {},
         }
         self.set_document(blank, mark_clean=True)

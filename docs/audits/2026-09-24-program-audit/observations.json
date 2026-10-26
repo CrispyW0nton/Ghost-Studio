@@ -1,0 +1,59 @@
+{
+  "basename_backup_collision": {
+    "status": "failed",
+    "expected": [
+      "original-0",
+      "original-1",
+      "original-2"
+    ],
+    "actual": [
+      "original-1",
+      "MISSING",
+      "original-2"
+    ]
+  },
+  "failed_restore_discards_backup": {
+    "status": "failed",
+    "original_exists": false,
+    "recoverable_backups": 0,
+    "reported_rollback_error": true
+  },
+  "omitted_optional_output": {
+    "status": "failed",
+    "required_published": false
+  },
+  "non_atomic_kmax_save": {
+    "previous_save_bytes": 566,
+    "remaining_bytes": 22,
+    "previous_save_preserved": false
+  },
+  "dll_discovery_order": [
+    {
+      "order": [
+        "GhostRigger.Core.IO",
+        "GhostRigger.Core.Tools"
+      ],
+      "provider": "GhostRigger.Core.IO",
+      "has_promote_staged_files": true
+    },
+    {
+      "order": [
+        "GhostRigger.Core.Tools",
+        "GhostRigger.Core.IO"
+      ],
+      "provider": "GhostRigger.Core.Tools",
+      "has_promote_staged_files": false
+    }
+  ],
+  "mixed_model_revision": [
+    [
+      "old-mdl",
+      "new-mdx"
+    ]
+  ],
+  "build_backend": {
+    "backend": "setuptools.backends.legacy:build",
+    "importable": false,
+    "error": "No module named 'setuptools.backends'"
+  }
+}

@@ -66,6 +66,41 @@ def test_range_gate_rejects_a_controller_only_false_positive() -> None:
     assert "ah_aperture_too_small" in report.failures
 
 
+def test_range_gate_allows_only_rounding_scale_aperture_tolerance() -> None:
+    shapes = _healthy_shape_positions()
+    neutral = shapes[0]
+    mouth_scale = float(
+        np.linalg.norm(neutral.max(axis=0) - neutral.min(axis=0))
+    )
+    aperture_floor = mouth_scale * 0.05
+    shapes[3] = neutral.copy()
+    shapes[3][2:, 2] -= aperture_floor * 0.999
+
+    near = score_facial_range(
+        model_name="near_threshold_head",
+        shape_positions=shapes,
+        upper_weights=np.asarray([1.0, 1.0, 0.0, 0.0]),
+        lower_weights=np.asarray([0.0, 0.0, 1.0, 1.0]),
+        mouth_weights=np.ones(4),
+    )
+
+    assert near.ok is True
+    assert "ah_aperture_near_floor" in near.warnings
+
+    shapes[3] = neutral.copy()
+    shapes[3][2:, 2] -= aperture_floor * 0.99
+    below = score_facial_range(
+        model_name="below_threshold_head",
+        shape_positions=shapes,
+        upper_weights=np.asarray([1.0, 1.0, 0.0, 0.0]),
+        lower_weights=np.asarray([0.0, 0.0, 1.0, 1.0]),
+        mouth_weights=np.ones(4),
+    )
+
+    assert below.ok is False
+    assert "ah_aperture_too_small" in below.failures
+
+
 def test_lip_timeline_reports_actual_shape_coverage_and_silence() -> None:
     lip = SimpleNamespace(
         duration=1.0,

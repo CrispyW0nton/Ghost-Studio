@@ -2,9 +2,15 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Unreal",
-    "file_count": 3,
+    "file_count": 4,
     "originals_remain_in_src": true,
     "files": [
+        {
+            "resource_name": "PYTHON_PAYLOAD_ADAPTERS_KOTOR_RETAIL_PIPELINE",
+            "source_path": "src/adapters/kotor_retail_pipeline.py",
+            "packaged_path": "Python/src/adapters/kotor_retail_pipeline.py",
+            "sha256": "9a0b529396ae269f2c2c2a1189fc76ec05dbc3cd784dc9506a746df8662ce3e7"
+        },
         {
             "resource_name": "PYTHON_PAYLOAD_UNREAL_INIT",
             "source_path": "src/unreal/__init__.py",
@@ -21,7 +27,7 @@
             "resource_name": "PYTHON_PAYLOAD_UNREAL_QUINN",
             "source_path": "src/unreal/quinn.py",
             "packaged_path": "Python/src/unreal/quinn.py",
-            "sha256": "f4637794b2417630c623dbd0375ca2b8a1f6e030111f6d325638c929d2cf9576"
+            "sha256": "a8a2ff7b737111b3fe1f5b73291266025836d68f30b2e3aacac224a84b38c36e"
         }
     ]
 }

@@ -489,6 +489,17 @@ class CustomRiggedCharacterImportService:
             scale=project.global_scale,
             selected_root=project.selected_skeleton_root,
         )
+        secondary_identity = dict(project.secondary_motion.get("model_identity") or {})
+        secondary_identity.update({
+            "model_resrefs": [str(project.resource_name or source.stem).strip().lower()],
+            "hierarchy_fingerprint": skeleton.fingerprint,
+            "root_name": skeleton.root_names[0] if skeleton.root_names else "",
+            "target_kind": "custom_character",
+        })
+        project.secondary_motion["model_identity"] = secondary_identity
+        runtime_state = dict(project.secondary_motion.get("runtime") or {})
+        runtime_state.update({"state": "capture_only", "write_enabled": False})
+        project.secondary_motion["runtime"] = runtime_state
         runtime_height_offset, runtime_height_source = detect_runtime_height_offset(skeleton)
         project.runtime_height_offset = runtime_height_offset
         project.runtime_height_source = runtime_height_source

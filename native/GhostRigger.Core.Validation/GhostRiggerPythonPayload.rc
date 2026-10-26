@@ -8,6 +8,7 @@ PYTHON_PAYLOAD_CORE_VALIDATION_CAPTURE_SPECS RCDATA "Python/src/core/validation/
 PYTHON_PAYLOAD_CORE_VALIDATION_CUSTOM_RIGGED_CHARACTER_VALIDATOR RCDATA "Python/src/core/validation/custom_rigged_character_validator.py"
 PYTHON_PAYLOAD_CORE_VALIDATION_HEAD_BUILDER_PREFLIGHT RCDATA "Python/src/core/validation/head_builder_preflight.py"
 PYTHON_PAYLOAD_CORE_VALIDATION_KOTOR_MODULE_ENGINE_CONTRACT RCDATA "Python/src/core/validation/kotor_module_engine_contract.py"
+PYTHON_PAYLOAD_CORE_VALIDATION_SECONDARY_MOTION_VALIDATOR RCDATA "Python/src/core/validation/secondary_motion_validator.py"
 PYTHON_PAYLOAD_CORE_VALIDATION_VALIDATION_ADAPTERS RCDATA "Python/src/core/validation/validation_adapters.py"
 PYTHON_PAYLOAD_CORE_VALIDATION_VALIDATION_BUS RCDATA "Python/src/core/validation/validation_bus.py"
 PYTHON_PAYLOAD_CORE_VALIDATION_VIEWPORT_VALIDATOR RCDATA "Python/src/core/validation/viewport_validator.py"

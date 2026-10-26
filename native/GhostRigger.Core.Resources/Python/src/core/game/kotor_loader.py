@@ -1998,7 +1998,11 @@ def _apply_bind_pose(model: KotorModel) -> None:
                 # ctype == 100: selfillum_color (CTRL_MESH_SELFILLUMCOLOR)
                 node.selfillum = tuple(v0[:3])
             elif ct == _CT_COLOR and len(v0) >= 3 and node.is_light:
-                node.light_color = tuple(max(0.0, float(x)) for x in v0[:3])
+                # Keep the sign: the engine lights with negative (darkening) colours as authored
+                # (RE02: 0x0050A050 flags rgb.r < 0; the vertex program uses PartLight +0x4C as is),
+                # and 395 vanilla light nodes in 8 K2 modules are negative (vanilla_relight census).
+                # Viewport light upload still clamps for display; the lightmap bake keeps the sign.
+                node.light_color = tuple(float(x) for x in v0[:3])
             elif ct == _CT_RADIUS and len(v0) >= 1 and node.is_light:
                 node.light_radius = max(0.0, float(v0[0]))
             elif ct == _CT_MULT and len(v0) >= 1 and node.is_light:

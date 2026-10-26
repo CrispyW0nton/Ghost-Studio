@@ -523,6 +523,65 @@ def test_animation_only_injection_uses_vanilla_depth_first_node_order() -> None:
     assert len(visited) == candidate.visited_node_count
 
 
+def test_animation_only_injection_declares_sparse_source_tree_count() -> None:
+    fixture_dir = Path(__file__).resolve().parent / "fixtures" / "kotor_stock" / "k1"
+    target_mdl = fixture_dir / "pmbam.mdl"
+    target_mdx = fixture_dir / "pmbam.mdx"
+    target_model = load_model_from_file(str(target_mdl), str(target_mdx), GameVersion.K1)
+    assert target_model is not None
+
+    target_nodes = target_model.all_nodes()
+    target_leaf = target_nodes[-1]
+    target_path = []
+    cursor = target_leaf
+    while cursor is not None:
+        target_path.append(cursor)
+        cursor = cursor.parent
+    target_path.reverse()
+    assert 1 < len(target_path) < len(target_nodes)
+
+    sparse_nodes = []
+    previous = None
+    for target_node in target_path:
+        node = target_node.clone_shallow()
+        node.parent = previous
+        node.children = []
+        node.controllers = []
+        if previous is not None:
+            previous.children.append(node)
+        sparse_nodes.append(node)
+        previous = node
+    sparse_nodes[-1].controllers = _anim_node(
+        sparse_nodes[-1].name,
+        orientations=[
+            [0.0, 0.0, 0.0, 1.0],
+            list(_quat_axis("Z", 5.0)),
+        ],
+        times=[0.0, 1.0],
+    ).controllers
+
+    animation = Animation(
+        name="kpm_sparse",
+        length=1.0,
+        transition_time=0.25,
+        anim_root=sparse_nodes[0].name,
+        nodes=sparse_nodes,
+    )
+    mdl_bytes, mdx_bytes = MDLBinaryWriter().inject_animation_override_bytes(
+        target_model,
+        target_mdl.read_bytes(),
+        target_mdx.read_bytes(),
+        animation,
+    )
+
+    assert mdx_bytes == target_mdx.read_bytes()
+    candidate = validate_raw_animation_footprint(mdl_bytes, "kpm_sparse")
+    assert candidate.success is True, candidate.issues
+    assert candidate.declared_node_count == len(sparse_nodes)
+    assert candidate.visited_node_count == len(sparse_nodes)
+    assert candidate.node_names == [node.name for node in sparse_nodes]
+
+
 def test_raw_animation_footprint_validator_rejects_non_depth_first_child_layout() -> None:
     root = ModelNode(name="root")
     child = ModelNode(name="child", parent=root)

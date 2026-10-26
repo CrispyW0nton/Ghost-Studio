@@ -55,7 +55,7 @@
     },
     {
         "project": "GhostRigger.Core.GUI.Display",
-        "python_file_count": 326,
+        "python_file_count": 331,
         "files": [
             "src\\gui\\__init__.py",
             "src\\gui\\assets\\__init__.py",
@@ -78,6 +78,7 @@
             "src\\gui\\dialogs\\add_model_to_scene_dialog.py",
             "src\\gui\\dialogs\\error_report.py",
             "src\\gui\\dialogs\\fbx_sdk_setup_dialog.py",
+            "src\\gui\\dialogs\\level_scene_export_dialog.py",
             "src\\gui\\dialogs\\lightmap_bake_worker.py",
             "src\\gui\\dialogs\\lightmap_preview_window.py",
             "src\\gui\\dialogs\\map_studio_obj_room_import_dialog.py",
@@ -89,6 +90,8 @@
             "src\\gui\\dialogs\\qt_lightmap_baker_dialog.py",
             "src\\gui\\dialogs\\qt_render_frame_dialog.py",
             "src\\gui\\dialogs\\qt_settings_dialog.py",
+            "src\\gui\\dialogs\\unreal_conversion_dialog.py",
+            "src\\gui\\dialogs\\unreal_level_import_dialog.py",
             "src\\gui\\dialogs\\uv_geometry_preview_window.py",
             "src\\gui\\dialogs\\uv_preview_window.py",
             "src\\gui\\gizmo\\__init__.py",
@@ -212,11 +215,13 @@
             "src\\gui\\panels\\qt_resource_panel.py",
             "src\\gui\\panels\\qt_rig_panel.py",
             "src\\gui\\panels\\qt_scene_outliner_panel.py",
+            "src\\gui\\panels\\qt_secondary_motion_editor.py",
             "src\\gui\\panels\\qt_skeleton_panel.py",
             "src\\gui\\panels\\qt_sprite_material_panel.py",
             "src\\gui\\panels\\qt_texture_panel.py",
             "src\\gui\\panels\\qt_ue5_rig_export_panel.py",
             "src\\gui\\panels\\qt_workflow_rail.py",
+            "src\\gui\\panels\\unreal_pipeline_panel.py",
             "src\\gui\\qt_lib.py",
             "src\\gui\\rendering\\__init__.py",
             "src\\gui\\rendering\\accel.py",
@@ -403,7 +408,7 @@
     },
     {
         "project": "GhostRigger.Core.IO",
-        "python_file_count": 48,
+        "python_file_count": 59,
         "files": [
             "src\\adapters\\files\\__init__.py",
             "src\\adapters\\files\\local_file_writer.py",
@@ -415,6 +420,7 @@
             "src\\core\\export\\export_job.py",
             "src\\core\\export\\gltf_importer.py",
             "src\\core\\export\\kotor_fbx_manifest.py",
+            "src\\core\\export\\pbr_materials.py",
             "src\\core\\export\\unity_export_bridge.py",
             "src\\core\\export\\unity_import_validator.py",
             "src\\core\\mdl\\__init__.py",
@@ -425,6 +431,8 @@
             "src\\core\\mdl\\mdl_writer.py",
             "src\\core\\placeables\\__init__.py",
             "src\\core\\placeables\\placeable_utp_io.py",
+            "src\\core\\secondary_motion\\__init__.py",
+            "src\\core\\secondary_motion\\profile_io.py",
             "src\\core\\templates\\__init__.py",
             "src\\core\\templates\\_native.py",
             "src\\core\\templates\\template_builder.py",
@@ -444,20 +452,28 @@
             "src\\io\\fbx\\fbx_sdk_loader.py",
             "src\\io\\fbx\\fbx_sdk_paths.py",
             "src\\io\\fbx\\fbx_sdk_setup.py",
+            "src\\io\\full_module_obj_export.py",
             "src\\io\\head_art_importer.py",
             "src\\io\\head_binary_export.py",
             "src\\io\\head_builder_package.py",
             "src\\io\\head_game_records.py",
             "src\\io\\head_texture_asset.py",
             "src\\io\\kotor_gui_io.py",
+            "src\\io\\level_scene_export.py",
             "src\\io\\mdl_auto_import.py",
             "src\\io\\obj_room_document.py",
-            "src\\io\\skybox_panorama_conversion.py"
+            "src\\io\\skybox_panorama_conversion.py",
+            "src\\io\\unreal_editor_connection.py",
+            "src\\io\\unreal_kmap_storage.py",
+            "src\\io\\unreal_level_bundle.py",
+            "src\\io\\unreal_native_snapshot.py",
+            "src\\io\\unreal_pipeline_store.py",
+            "src\\io\\unreal_project_assets.py"
         ]
     },
     {
         "project": "GhostRigger.Core.Math",
-        "python_file_count": 63,
+        "python_file_count": 66,
         "files": [
             "src\\core\\camera\\__init__.py",
             "src\\core\\camera\\arcball_camera.py",
@@ -508,8 +524,11 @@
             "src\\math\\heat_diffusion_skinning.py",
             "src\\math\\landmark_alignment.py",
             "src\\math\\limb_ik.py",
+            "src\\math\\mesh_instance_transform.py",
             "src\\math\\module_layout_math.py",
             "src\\math\\transform_math.py",
+            "src\\math\\unreal_level_space.py",
+            "src\\math\\unreal_native_surface.py",
             "src\\math\\viewcube_math.py",
             "src\\math\\walkmesh_runtime.py",
             "src\\math\\winding_number.py",
@@ -526,7 +545,7 @@
     },
     {
         "project": "GhostRigger.Core.Project",
-        "python_file_count": 7,
+        "python_file_count": 8,
         "files": [
             "src\\core\\project\\__init__.py",
             "src\\core\\project\\custom_rigged_character_project.py",
@@ -534,7 +553,8 @@
             "src\\core\\project\\head_builder_repository.py",
             "src\\core\\project\\placeable_asset.py",
             "src\\core\\project\\project_validation.py",
-            "src\\core\\project\\resource_address.py"
+            "src\\core\\project\\resource_address.py",
+            "src\\core\\project\\secondary_motion_profile.py"
         ]
     },
     {
@@ -722,7 +742,7 @@
     },
     {
         "project": "GhostRigger.Core.Scene",
-        "python_file_count": 136,
+        "python_file_count": 140,
         "files": [
             "src\\core\\level\\__init__.py",
             "src\\core\\level\\kmap_model.py",
@@ -838,6 +858,10 @@
             "src\\core\\modules\\module_save_pipeline.py",
             "src\\core\\modules\\module_walkmesh_service.py",
             "src\\core\\modules\\stock_module_importer.py",
+            "src\\core\\modules\\unreal_authored_reimport.py",
+            "src\\core\\modules\\unreal_import_state.py",
+            "src\\core\\modules\\unreal_level_import.py",
+            "src\\core\\modules\\unreal_sector_projection.py",
             "src\\core\\scene\\__init__.py",
             "src\\core\\scene\\_native.py",
             "src\\core\\scene\\axis_mode.py",
@@ -864,7 +888,7 @@
     },
     {
         "project": "GhostRigger.Core.Tools",
-        "python_file_count": 404,
+        "python_file_count": 405,
         "files": [
             "src\\adapters\\qt_viewport\\camera_gizmo_renderer.py",
             "src\\adapters\\qt_viewport\\camera_overlays.py",
@@ -1265,6 +1289,7 @@
             "src\\sequence\\tracks\\visibility_track.py",
             "src\\systems\\bas\\attachment_alignment.py",
             "src\\systems\\bas\\attachment_catalog.py",
+            "src\\systems\\bas\\character_presets.py",
             "src\\systems\\bas\\head_resolution.py",
             "src\\systems\\bas\\model_recipe.py",
             "src\\systems\\bas\\preview_composer.py",
@@ -1274,8 +1299,9 @@
     },
     {
         "project": "GhostRigger.Core.Unreal",
-        "python_file_count": 3,
+        "python_file_count": 4,
         "files": [
+            "src\\adapters\\kotor_retail_pipeline.py",
             "src\\unreal\\__init__.py",
             "src\\unreal\\animation_retargeting.py",
             "src\\unreal\\quinn.py"
@@ -1283,7 +1309,7 @@
     },
     {
         "project": "GhostRigger.Core.Validation",
-        "python_file_count": 11,
+        "python_file_count": 12,
         "files": [
             "src\\core\\validation\\__init__.py",
             "src\\core\\validation\\_native.py",
@@ -1293,6 +1319,7 @@
             "src\\core\\validation\\custom_rigged_character_validator.py",
             "src\\core\\validation\\head_builder_preflight.py",
             "src\\core\\validation\\kotor_module_engine_contract.py",
+            "src\\core\\validation\\secondary_motion_validator.py",
             "src\\core\\validation\\validation_adapters.py",
             "src\\core\\validation\\validation_bus.py",
             "src\\core\\validation\\viewport_validator.py"
@@ -1300,7 +1327,7 @@
     },
     {
         "project": "GhostRigger.Core.Workflow",
-        "python_file_count": 153,
+        "python_file_count": 157,
         "files": [
             "src\\adapters\\facial\\__init__.py",
             "src\\adapters\\facial\\arkit_performance.py",
@@ -1446,6 +1473,8 @@
             "src\\core\\scripting\\quest.py",
             "src\\core\\scripting\\reference.py",
             "src\\core\\scripting\\studio.py",
+            "src\\core\\secondary_motion\\__init__.py",
+            "src\\core\\secondary_motion\\workflow.py",
             "src\\core\\workflow\\__init__.py",
             "src\\core\\workflow\\_workflow_base.py",
             "src\\core\\workflow\\composite_workflow.py",
@@ -1454,7 +1483,9 @@
             "src\\core\\workflow\\map_studio_lightmap_apply.py",
             "src\\core\\workflow\\particle_placeable_export.py",
             "src\\core\\workflow\\placeable_builder_service.py",
-            "src\\core\\workflow\\plcaa_manual_proof_kit.py"
+            "src\\core\\workflow\\plcaa_manual_proof_kit.py",
+            "src\\core\\workflow\\unreal_map_import.py",
+            "src\\core\\workflow\\unreal_pipeline_jobs.py"
         ]
     },
     {

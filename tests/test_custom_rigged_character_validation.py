@@ -302,7 +302,7 @@ def test_project_schema_zero_migrates_without_humanoid_template() -> None:
         "resref": "old_beast",
         "game": "K1",
     })
-    assert project.schema_version == 3
+    assert project.schema_version == 4
     assert project.creature_sound_cues == []
     assert project.primary_fbx.path == "assets/creature.fbx"
     assert project.external_animation_assets[0].path == "assets/walk.fbx"

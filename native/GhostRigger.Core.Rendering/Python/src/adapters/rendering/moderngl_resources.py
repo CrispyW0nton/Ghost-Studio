@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
+import struct
 from typing import Dict, List, Optional, Tuple
 
 from src.adapters.gpu.moderngl_runtime import Image, _NUMPY, _PIL, moderngl, np
@@ -30,6 +32,12 @@ from src.math.gpu_math import (
 )
 
 log = logging.getLogger(__name__)
+
+_RETAIL_C_KATH_HAIR_VERTEX_COUNT = 152
+_RETAIL_C_KATH_HAIR_FACE_COUNT = 110
+_RETAIL_C_KATH_HAIR_UV_SHA256 = (
+    "d30e283059dac9caad28d608fcbd71beb3f00e4dfc6f777a2a60595207014560"
+)
 
 
 def _is_saber_runtime_helper(node) -> bool:
@@ -441,6 +449,49 @@ def prebuild_static_gpu_mesh_data(model) -> int:
     return built
 
 
+def _is_redundant_c_kath_hair_preview_shell(node) -> bool:
+    """Return True for K1 ``c_kath``'s duplicate striped mane shell.
+
+    ``Frnt`` already carries the creature's correctly textured mane. The
+    additional retail ``Hair01`` skin uses coarse atlas cards whose unrelated
+    body regions read as broken UVs in a modern free-camera preview. Suppress
+    only this exact GPU upload; import, validation, and export retain the
+    original node and authored UV stream unchanged.
+    """
+
+    if str(getattr(node, "name", "") or "").strip().casefold() != "hair01":
+        return False
+    if not bool(getattr(node, "is_skin", False)):
+        return False
+    if str(getattr(node, "texture", "") or "").strip().casefold() != "c_khounda02":
+        return False
+    vertices = getattr(node, "vertices", [])
+    faces = getattr(node, "faces", [])
+    uvs = getattr(node, "uvs", [])
+    if (
+        len(vertices) != _RETAIL_C_KATH_HAIR_VERTEX_COUNT
+        or len(faces) != _RETAIL_C_KATH_HAIR_FACE_COUNT
+        or len(uvs) != _RETAIL_C_KATH_HAIR_VERTEX_COUNT
+    ):
+        return False
+
+    root = node
+    seen: set[int] = set()
+    while getattr(root, "parent", None) is not None and id(root) not in seen:
+        seen.add(id(root))
+        root = root.parent
+    if str(getattr(root, "name", "") or "").strip().casefold() != "c_kath":
+        return False
+
+    digest = hashlib.sha256()
+    try:
+        for uv in uvs:
+            digest.update(struct.pack("<2f", float(uv[0]), float(uv[1])))
+    except (IndexError, OverflowError, TypeError, ValueError):
+        return False
+    return digest.hexdigest() == _RETAIL_C_KATH_HAIR_UV_SHA256
+
+
 def _build_vbo_data(node, world_pos: tuple, world_orient: tuple,
                     anim_pose_node=None,
                     is_module: bool = False,
@@ -473,6 +524,9 @@ def _build_vbo_data(node, world_pos: tuple, world_orient: tuple,
     ~5 ms (same mesh, vectorized NumPy).
     """
     if not _NUMPY:
+        return None, None
+
+    if _is_redundant_c_kath_hair_preview_shell(node):
         return None, None
 
     verts = getattr(node, 'vertices', getattr(node, 'verts', []))

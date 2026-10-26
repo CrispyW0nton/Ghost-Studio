@@ -14,6 +14,7 @@ from src.core.export.export_job import (
     ExportJobRequest,
     ExportJobStatus,
     ExportOutputSpec,
+    promote_staged_files,
     run_export_job,
 )
 from src.core.ports import FileWriterPort
@@ -66,6 +67,38 @@ def test_successful_export_writes_staging_then_promotes(tmp_path: Path) -> None:
     assert result.status == ExportJobStatus.SUCCEEDED
     assert final.read_text(encoding="utf-8") == "hello"
     assert seen_staged and not seen_staged[0].parent.exists()
+
+
+def test_dynamic_staged_file_promotion_restores_existing_set_on_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from src.core.export import export_job
+
+    staging = tmp_path / "staging"
+    target = tmp_path / "target"
+    staging.mkdir()
+    target.mkdir()
+    (staging / "module.obj").write_text("new obj", encoding="utf-8")
+    (staging / "module.mtl").write_text("new mtl", encoding="utf-8")
+    (target / "module.obj").write_text("old obj", encoding="utf-8")
+    (target / "module.mtl").write_text("old mtl", encoding="utf-8")
+    real_replace = export_job.os.replace
+
+    def fail_obj_promotion(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
+        if source_path == staging / "module.obj" and destination_path == target / "module.obj":
+            raise PermissionError("geometry file is locked")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(export_job.os, "replace", fail_obj_promotion)
+
+    with pytest.raises(OSError, match="geometry file is locked"):
+        promote_staged_files(staging, target)
+
+    assert (target / "module.obj").read_text(encoding="utf-8") == "old obj"
+    assert (target / "module.mtl").read_text(encoding="utf-8") == "old mtl"
 
 
 def test_export_context_file_writer_port_writes_bytes_to_staging(tmp_path: Path) -> None:
@@ -637,6 +670,388 @@ def test_export_full_module_routes_all_group_objects_to_one_mesh_worker(
     assert args[2] == module_objects
     assert args[3] == str(output)
     assert kwargs["tex_cache"] == "texture-cache"
+
+
+def test_export_full_module_obj_routes_all_group_objects_to_one_mesh_worker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from src.gui.windows.application_core.shared import model_io
+    from src.io.full_module_obj_export import export_full_module_obj
+
+    module_objects = [
+        SimpleNamespace(
+            id=f"room-{suffix}",
+            name=f"m12aa_01{suffix}",
+            metadata={
+                "module_group": {"module_root": "m12aa_01"},
+                "_runtime_model": SimpleNamespace(name=f"m12aa_01{suffix}"),
+            },
+        )
+        for suffix in "abcdefghijklmnopq"
+    ]
+    output = tmp_path / "m12aa_01_full.obj"
+    captured: dict[str, object] = {}
+
+    class _Harness(model_io.ModelIoMixin):
+        scene_manager = SimpleNamespace(
+            active_scene=SimpleNamespace(objects=module_objects),
+            get_selected_objects=lambda: [module_objects[0]],
+        )
+        viewport = SimpleNamespace(
+            _selected_viewport_nodes=[
+                SimpleNamespace(_gr_scene_object_id=module_objects[0].id),
+            ]
+        )
+
+        def _get_tex_cache_for_export(self):
+            return "texture-cache"
+
+        def _run_io_async(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        def _log(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(
+        model_io.QtWidgets.QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(output), "Wavefront OBJ (*.obj)"),
+    )
+
+    _Harness()._export_full_module_obj()
+
+    args = captured["args"]
+    kwargs = captured["kwargs"]
+    assert args[1] is export_full_module_obj
+    assert args[2] == module_objects
+    assert args[3] == str(output)
+    assert kwargs["tex_cache"] == "texture-cache"
+
+
+def test_full_module_obj_worker_merges_group_and_publishes_sidecars(
+    tmp_path: Path,
+) -> None:
+    from src.io.full_module_obj_export import export_full_module_obj
+
+    scene_objects = [
+        SimpleNamespace(
+            name=f"m12aa_01{suffix}",
+            metadata={
+                "_runtime_model": _selected_export_triangle_model(
+                    f"room_{suffix}",
+                    f"texture_{suffix}",
+                ),
+            },
+            transform=SimpleNamespace(
+                position=(float(index) * 2.0, 0.0, 0.0),
+                rotation=(0.0, 0.0, 0.0),
+                scale=(1.0, 1.0, 1.0),
+            ),
+        )
+        for index, suffix in enumerate("abcdefghijklmnopq")
+    ]
+
+    class _Image:
+        mode = "RGB"
+
+        def transpose(self, _operation):
+            return self
+
+        def save(self, path):
+            Path(path).write_bytes(b"tga")
+
+    output = tmp_path / "m12aa_01_full.obj"
+    output_path, sidecars = export_full_module_obj(
+        scene_objects,
+        str(output),
+        tex_cache=SimpleNamespace(get=lambda _name: _Image()),
+    )
+
+    obj_text = output.read_text(encoding="utf-8")
+    mtl_text = output.with_suffix(".mtl").read_text(encoding="utf-8")
+    assert output_path == str(output)
+    assert obj_text.count("\no ") == 1
+    assert "usemtl texture_a" in obj_text
+    assert "usemtl texture_q" in obj_text
+    assert "newmtl texture_a" in mtl_text
+    assert "newmtl texture_q" in mtl_text
+    assert sidecars.requested == 17
+    assert sidecars.saved == 17
+    assert set(sidecars.saved_files) == {
+        f"texture_{suffix}.tga" for suffix in "abcdefghijklmnopq"
+    }
+
+
+def test_export_maya_room_module_obj_routes_all_group_objects(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from src.gui.windows.application_core.shared import model_io
+    from src.io.full_module_obj_export import export_maya_room_module_obj
+
+    module_objects = [
+        SimpleNamespace(
+            id=f"room-{suffix}",
+            name=f"m12aa_01{suffix}",
+            metadata={
+                "module_group": {"module_root": "m12aa_01"},
+                "_runtime_model": SimpleNamespace(name=f"m12aa_01{suffix}"),
+            },
+        )
+        for suffix in "abcdefghijklmnopq"
+    ]
+    output = tmp_path / "m12aa_01_maya_rooms.obj"
+    captured: dict[str, object] = {}
+
+    class _Harness(model_io.ModelIoMixin):
+        scene_manager = SimpleNamespace(
+            active_scene=SimpleNamespace(objects=module_objects),
+            get_selected_objects=lambda: [module_objects[0]],
+        )
+        viewport = SimpleNamespace(
+            _selected_viewport_nodes=[
+                SimpleNamespace(_gr_scene_object_id=module_objects[0].id),
+            ]
+        )
+
+        def _get_tex_cache_for_export(self):
+            return "texture-cache"
+
+        def _run_io_async(self, *args, **kwargs):
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        def _log(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(
+        model_io.QtWidgets.QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(output), "Wavefront OBJ (*.obj)"),
+    )
+
+    _Harness()._export_maya_room_module_obj()
+
+    args = captured["args"]
+    kwargs = captured["kwargs"]
+    assert args[1] is export_maya_room_module_obj
+    assert args[2] == module_objects
+    assert args[3] == str(output)
+    assert kwargs["tex_cache"] == "texture-cache"
+
+
+def test_maya_room_module_obj_worker_preserves_seventeen_room_objects(
+    tmp_path: Path,
+) -> None:
+    from src.io.full_module_obj_export import export_maya_room_module_obj
+
+    scene_objects = [
+        SimpleNamespace(
+            name=f"m12aa_01{suffix}",
+            metadata={
+                "_runtime_model": _selected_export_triangle_model(
+                    f"mesh_{suffix}",
+                    f"texture_{suffix}",
+                ),
+            },
+            transform=SimpleNamespace(
+                position=(float(index) * 2.0, 0.0, 0.0),
+                rotation=(0.0, 0.0, 0.0),
+                scale=(1.0, 1.0, 1.0),
+            ),
+        )
+        for index, suffix in enumerate("abcdefghijklmnopq")
+    ]
+
+    class _Image:
+        mode = "RGB"
+
+        def transpose(self, _operation):
+            return self
+
+        def save(self, path):
+            Path(path).write_bytes(b"tga")
+
+    output = tmp_path / "m12aa_01_maya_rooms.obj"
+    output_path, sidecars = export_maya_room_module_obj(
+        scene_objects,
+        str(output),
+        tex_cache=SimpleNamespace(get=lambda _name: _Image()),
+    )
+
+    obj_text = output.read_text(encoding="utf-8")
+    assert output_path == str(output)
+    assert obj_text.count("\no ") == 17
+    assert obj_text.count("\ng ") == 17
+    for suffix in "abcdefghijklmnopq":
+        assert f"\no m12aa_01{suffix}\n" in obj_text
+        assert f"\ng m12aa_01{suffix}\n" in obj_text
+    assert sidecars.requested == 17
+    assert sidecars.saved == 17
+
+
+def test_full_module_obj_rejects_group_with_unloaded_room(tmp_path: Path) -> None:
+    from src.io.full_module_obj_export import export_full_module_obj
+
+    loaded_room = SimpleNamespace(
+        name="m12aa_01a",
+        metadata={
+            "_runtime_model": _selected_export_triangle_model("loaded", "stone"),
+        },
+        transform=SimpleNamespace(
+            position=(0.0, 0.0, 0.0),
+            rotation=(0.0, 0.0, 0.0),
+            scale=(1.0, 1.0, 1.0),
+        ),
+    )
+    unloaded_room = SimpleNamespace(
+        name="m12aa_01b",
+        metadata={"_runtime_model": None},
+    )
+    output = tmp_path / "m12aa_01_full.obj"
+
+    with pytest.raises(ValueError, match=r"m12aa_01b"):
+        export_full_module_obj([loaded_room, unloaded_room], str(output))
+
+    assert not output.exists()
+    assert not output.with_suffix(".mtl").exists()
+    assert not list(tmp_path.glob(".m12aa_01_full-export-*"))
+
+
+def test_full_module_obj_cancellation_does_not_publish_staged_files(
+    tmp_path: Path,
+) -> None:
+    import threading
+
+    from src.io.export_control import ExportCancelledError
+    from src.io.full_module_obj_export import export_full_module_obj
+
+    cancelled = threading.Event()
+    scene_objects = [
+        SimpleNamespace(
+            name="m12aa_01a",
+            metadata={
+                "_runtime_model": _selected_export_triangle_model(
+                    "courtyard",
+                    "lda_grass07",
+                ),
+            },
+            transform=SimpleNamespace(
+                position=(0.0, 0.0, 0.0),
+                rotation=(0.0, 0.0, 0.0),
+                scale=(1.0, 1.0, 1.0),
+            ),
+        )
+    ]
+
+    class _Image:
+        mode = "RGB"
+
+        def transpose(self, _operation):
+            return self
+
+        def save(self, path):
+            Path(path).write_bytes(b"partial staged texture")
+
+    def _get_texture(_name):
+        cancelled.set()
+        return _Image()
+
+    output = tmp_path / "cancelled.obj"
+    with pytest.raises(ExportCancelledError):
+        export_full_module_obj(
+            scene_objects,
+            str(output),
+            tex_cache=SimpleNamespace(get=_get_texture),
+            is_cancelled=cancelled.is_set,
+        )
+
+    assert not output.exists()
+    assert not output.with_suffix(".mtl").exists()
+    assert not (tmp_path / "lda_grass07.tga").exists()
+    assert not list(tmp_path.glob(".cancelled-export-*"))
+
+
+def _merge_filter_triangle_node(
+    name: str,
+    *,
+    texture: str = "shared_texture",
+    render: bool = True,
+    shininess: float = 0.0,
+    faces: list[tuple[int, int, int]] | None = None,
+):
+    from src.core.geometry.model_data import ModelNode, NodeFlags
+
+    return ModelNode(
+        name=name,
+        flags=int(NodeFlags.HEADER | NodeFlags.MESH),
+        vertices=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        normals=[(0.0, 0.0, 1.0)] * 3,
+        uvs=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
+        faces=[(0, 1, 2)] if faces is None else faces,
+        face_mats=[0],
+        texture=texture,
+        texture_names=[texture],
+        tex_count=1,
+        render=render,
+        shininess=shininess,
+    )
+
+
+def _merge_filter_model(*nodes):
+    from src.core.geometry.model_data import KotorModel, ModelNode, NodeFlags
+
+    root = ModelNode(
+        name="root",
+        flags=int(NodeFlags.HEADER),
+        children=list(nodes),
+    )
+    for node in nodes:
+        node.parent = root
+    return KotorModel(name="fixture", classification="tile", root_node=root)
+
+
+def test_node_filter_can_include_render_false_obj_geometry_and_skips_no_face_nodes() -> None:
+    from src.converters.mesh_converter import OBJExporter
+    from src.io.fbx.fbx_exporter import FbxExportError, merge_selected_scene_objects
+
+    facial_mesh = _merge_filter_triangle_node("eyeRA", texture="eye_texture", render=False)
+    no_face_mesh = _merge_filter_triangle_node(
+        "eye_helper",
+        texture="eye_texture",
+        render=False,
+        faces=[],
+    )
+    model = _merge_filter_model(facial_mesh, no_face_mesh)
+
+    with pytest.raises(FbxExportError):
+        merge_selected_scene_objects([model])
+
+    merged = merge_selected_scene_objects(
+        [model],
+        node_filter=OBJExporter._is_renderable,
+    )
+
+    assert len(merged.root_node.faces) == 1
+    assert [slot.texture for slot in merged.root_node._gr_fbx_material_slots] == [
+        "eye_texture"
+    ]
+
+
+def test_material_key_keeps_materials_with_distinct_shininess_separate() -> None:
+    from src.io.fbx.fbx_exporter import merge_selected_scene_objects
+
+    dull = _merge_filter_triangle_node("dull", shininess=2.0)
+    glossy = _merge_filter_triangle_node("glossy", shininess=128.0)
+
+    merged = merge_selected_scene_objects([_merge_filter_model(dull, glossy)])
+
+    assert merged.root_node.face_mats == [0, 1]
+    assert [
+        slot.shininess for slot in merged.root_node._gr_fbx_material_slots
+    ] == [2.0, 128.0]
 
 
 def test_clean_module_obj_filter_removes_skybox_and_oversized_background() -> None:

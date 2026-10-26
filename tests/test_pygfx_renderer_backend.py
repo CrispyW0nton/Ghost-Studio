@@ -2474,6 +2474,24 @@ def test_pygfx_mesh_cache_updates_material_for_selection_without_geometry_rebuil
     assert cache.material_updates_this_frame == 1
 
 
+def test_pygfx_texture_upload_restores_top_down_rows_from_texture_cache() -> None:
+    source = Image.fromarray(
+        np.asarray(
+            [
+                [[0, 0, 255, 255]],
+                [[255, 0, 0, 255]],
+            ],
+            dtype=np.uint8,
+        ),
+        mode="RGBA",
+    )
+
+    pixels = PygfxMeshCache._texture_pixels(source)
+
+    assert pixels[0, 0].tolist() == [255, 0, 0, 255]
+    assert pixels[1, 0].tolist() == [0, 0, 255, 255]
+
+
 def test_pygfx_scene_bridge_updates_dirty_transform_without_geometry_rebuild() -> None:
     cache = PygfxMeshCache()
     scene = _FakeScene()

@@ -138,8 +138,18 @@ ROLE_NODE_NAMES: Mapping[HeadArtAnatomyRole, tuple[str, ...]] = {
     HeadArtAnatomyRole.RIGHT_EYE: ("eyeRA",),
     HeadArtAnatomyRole.LEFT_EYELID: ("eyeLlid",),
     HeadArtAnatomyRole.RIGHT_EYELID: ("eyeRlid",),
-    HeadArtAnatomyRole.UPPER_TEETH: ("Teethup", "teethU"),
-    HeadArtAnatomyRole.LOWER_TEETH: ("Teethlow", "teethL"),
+    HeadArtAnatomyRole.UPPER_TEETH: (
+        "Teethup",
+        "teethU",
+        "teethUa",
+        "teethupper",
+    ),
+    HeadArtAnatomyRole.LOWER_TEETH: (
+        "Teethlow",
+        "teethL",
+        "teethLa",
+        "teethlower",
+    ),
     HeadArtAnatomyRole.TONGUE: ("tongue",),
 }
 
@@ -222,8 +232,25 @@ def build_head_facial_transplant(
         for index, source_index in enumerate(source_indices)
         if source_index in accessory_source_indices
     )
+    candidate = deepcopy(donor_model)
+    candidate_nodes = _model_nodes(candidate)
+    candidate_skin = _unique_node(
+        candidate_nodes,
+        ("head",),
+        require_skin=True,
+    )
+    (
+        donor_transfer_vertices,
+        payload_vertices,
+        payload_normals,
+    ) = _skin_transfer_and_payload_channels(
+        donor_skin=donor_skin,
+        payload_skin=candidate_skin,
+        target_world_vertices=transformed_vertices,
+        target_world_normals=transformed_normals,
+    )
     transfer = transfer_head_skin_weights(
-        donor_vertices=tuple(donor_skin.vertices),
+        donor_vertices=donor_transfer_vertices,
         donor_faces=tuple(donor_skin.faces),
         donor_weight_rows=tuple(donor_skin.skin_data),
         target_vertices=transformed_vertices,
@@ -233,19 +260,11 @@ def build_head_facial_transplant(
         maximum_surface_distance=float(maximum_surface_distance),
         allow_distance_fallback=True,
     )
-
-    candidate = deepcopy(donor_model)
-    candidate_nodes = _model_nodes(candidate)
-    candidate_skin = _unique_node(
-        candidate_nodes,
-        ("head",),
-        require_skin=True,
-    )
     _apply_skin_payload(
         candidate_skin,
-        vertices=transformed_vertices,
+        vertices=payload_vertices,
         faces=skin_faces,
-        normals=transformed_normals,
+        normals=payload_normals,
         uvs=skin_uvs,
         rows=transfer.rows,
         texture_resref=texture_name,
@@ -285,6 +304,11 @@ def build_head_facial_transplant(
             normals=local_normals,
             uvs=uvs,
             texture_resref=texture_name,
+            skin_bone_name=(
+                "f_jaw_g"
+                if bool(getattr(target_node, "skin_data", ()) or ())
+                else ""
+            ),
         )
         component_rows.append(
             (role.value, str(target_node.name), len(vertices), len(faces))
@@ -494,6 +518,28 @@ def align_head_art_anatomy_to_donor(
     )
 
 
+def _skin_transfer_and_payload_channels(
+    *,
+    donor_skin: Any,
+    payload_skin: Any,
+    target_world_vertices: Sequence[Sequence[float]],
+    target_world_normals: Sequence[Sequence[float]],
+) -> tuple[
+    tuple[tuple[float, float, float], ...],
+    tuple[tuple[float, float, float], ...],
+    tuple[tuple[float, float, float], ...],
+]:
+    """Use one headhook/world space for transfer and node-local output."""
+
+    donor_world = _node_vertices_in_world(donor_skin)
+    payload_vertices, payload_normals = _world_to_node_channels(
+        payload_skin,
+        target_world_vertices,
+        target_world_normals,
+    )
+    return donor_world, payload_vertices, payload_normals
+
+
 def _apply_skin_payload(
     node: Any,
     *,
@@ -544,6 +590,7 @@ def _apply_rigid_payload(
     normals: Sequence[Sequence[float]],
     uvs: Sequence[Sequence[float]],
     texture_resref: str,
+    skin_bone_name: str = "",
 ) -> None:
     _apply_mesh_channels(
         node,
@@ -553,13 +600,37 @@ def _apply_rigid_payload(
         uvs=uvs,
         texture_resref=texture_resref,
     )
-    node.skin_data = []
-    node.bone_map = []
-    node.bone_map_floats = []
-    node.bone_indices = []
-    node.bone_weights = []
-    node.qbone_list = []
-    node.tbone_list = []
+    rigid_bone = str(skin_bone_name or "").strip()
+    if rigid_bone:
+        from src.core.geometry.model_data import BoneWeight, VertexSkinData
+
+        matches = [
+            index
+            for index, value in enumerate(
+                list(getattr(node, "bone_map", ()) or ())
+            )
+            if str(value).casefold() == rigid_bone.casefold()
+        ]
+        if len(matches) != 1:
+            raise HeadFacialTransplantError(
+                f"Secondary skin {node.name!r} must contain exactly one "
+                f"{rigid_bone!r} palette slot"
+            )
+        slot = matches[0]
+        node.skin_data = [
+            VertexSkinData([BoneWeight(slot, 1.0)])
+            for _ in node.vertices
+        ]
+        node.bone_indices = [[slot] for _ in node.vertices]
+        node.bone_weights = [[1.0] for _ in node.vertices]
+    else:
+        node.skin_data = []
+        node.bone_map = []
+        node.bone_map_floats = []
+        node.bone_indices = []
+        node.bone_weights = []
+        node.qbone_list = []
+        node.tbone_list = []
 
 
 def _apply_mesh_channels(

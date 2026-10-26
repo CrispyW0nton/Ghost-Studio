@@ -214,14 +214,24 @@ async def handle_run_save_warp_route(arguments: Dict[str, Any]) -> Dict[str, Any
 
 
 def _controller(inp: Any) -> KotorWindowInput:
+    install_path = _install_path(inp)
     return KotorWindowInput(
         window_title=getattr(inp, "window_title", None),
         game=getattr(inp, "game", None) or "k2",
-        dinput_hook_root=_hook_root(inp) if bool(getattr(inp, "use_dinput_hook", False)) else None,
+        install_path=install_path,
+        # The DirectInput proxy command file lives in the same installation the
+        # window identity is bound to; there is no separate hook root.
+        dinput_hook_root=install_path if bool(getattr(inp, "use_dinput_hook", False)) else None,
     )
 
 
-def _hook_root(inp: Any) -> str | None:
+def _install_path(inp: Any) -> str | None:
+    """Resolve the absolute installation whose game executable identifies the
+    window.  An explicit path takes precedence; otherwise the game alias is
+    resolved through the installation registry.  Returns None when no
+    installation can be resolved (the action tools then refuse; status reports
+    the identity as unavailable rather than matching a look-alike window)."""
+
     explicit = getattr(inp, "path", None)
     if explicit:
         return str(explicit)

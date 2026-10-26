@@ -34,12 +34,16 @@ from .mesh_loader import load_kotor_skinned_mesh
 from .mesh_rebinder import RebindOptions, ReboundMesh, SourceMesh, rebind_mesh_to_target_skeleton
 from .sampler import DEFAULT_CORPUS_ROOT, SampledClip, load_fixture_model, sample_clip_to_fixed_rate
 from .skeleton_aligner import AlignedSkeleton, aligned_skeleton_to_registry, compute_local_from_world
-from .skeleton_renamer import RenameSpec, load_rename_spec, validate_rename_spec
+from .skeleton_renamer import RenameSpec, _resolve_repo_root, load_rename_spec, validate_rename_spec
 from src.unreal.animation_retargeting import build_bone_map
 from src.unreal.quinn import _read_binary_fbx, load_quinn_skeleton_asset, unreal_skeleton_model
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# The Workflow payload lives below native/GhostRigger.Core.Workflow/Python, so a
+# fixed parents[3] pointed at that package directory, where neither the Blender
+# script nor the Day 4 fixtures exist.  Share the renamer's repository-root
+# resolver (GHOSTRIGGER_NATIVE_REPO_ROOT, then an ancestor/cwd scan).
+REPO_ROOT = _resolve_repo_root()
 DEFAULT_EXPORT_DIR = REPO_ROOT / "exports" / "retargets" / "day4"
 DEFAULT_DAY45_EXPORT_DIR = REPO_ROOT / "exports" / "retargets" / "day4_5"
 DEFAULT_LOG_DIR = REPO_ROOT / "Logs" / "retargeting"
@@ -160,6 +164,11 @@ def write_json_deterministic(path: Path, payload: Dict[str, Any]) -> None:
 # hardcoded 4.2 requirement was relaxed so standard installs (4.0, 4.1, 4.2,
 # 4.3, ...) are all accepted.
 MINIMUM_BLENDER_VERSION = (4, 0, 0)
+# scripts/blender_fbx_export.py uses the legacy ``Action.fcurves`` API, which
+# Blender 5.0 removed (slotted actions/channelbags). Under 5.x the script
+# raised and the background process then hung until the 300 s timeout, so 5.x
+# is rejected up front and discovery prefers the newest 4.x install.
+MAXIMUM_BLENDER_MAJOR = 4
 
 
 def _blender_install_roots() -> list[Path]:
@@ -200,8 +209,15 @@ def _discover_blender_executables() -> list[Path]:
             exe = child / "blender.exe"
             if exe.exists():
                 found.append((_parse_version_tuple(child.name), exe))
-    # Sort by parsed version, descending; missing-version entries sort last.
-    found.sort(key=lambda item: item[0], reverse=True)
+    # Supported majors first (newest first), then newer unsupported majors;
+    # missing-version entries sort last.
+    found.sort(
+        key=lambda item: (
+            bool(item[0]) and item[0][0] <= MAXIMUM_BLENDER_MAJOR,
+            item[0],
+        ),
+        reverse=True,
+    )
     return [exe for _, exe in found]
 
 
@@ -254,6 +270,7 @@ def blender_version(blender_executable: str | Path | None = None) -> str:
         text=True,
         timeout=30,
         check=False,
+        stdin=subprocess.DEVNULL,
     )
     if result.returncode != 0:
         raise FBXExportFailure(f"Blender version check failed:\n{result.stdout}\n{result.stderr}")
@@ -261,6 +278,12 @@ def blender_version(blender_executable: str | Path | None = None) -> str:
     if not _version_meets_minimum(first):
         raise FBXExportFailure(
             f"Blender {MINIMUM_BLENDER_VERSION[0]}.{MINIMUM_BLENDER_VERSION[1]}+ is required, found: {first}"
+        )
+    parsed = _parse_version_tuple(first)
+    if parsed and parsed[0] > MAXIMUM_BLENDER_MAJOR:
+        raise FBXExportFailure(
+            f"Blender {MAXIMUM_BLENDER_MAJOR}.x is required (the export script uses the legacy "
+            f"Action.fcurves API removed in 5.0), found: {first}"
         )
     return first
 
@@ -631,11 +654,28 @@ def _options_to_dict(options: FBXExportOptions) -> Dict[str, Any]:
     return payload
 
 
-def _run_blender(args: list[str], *, timeout: int = 300) -> subprocess.CompletedProcess:
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, check=False)
-    DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
-    log_path = DEFAULT_LOG_DIR / f"blender_day4_{stamp}.log"
+def _run_blender(
+    args: list[str],
+    *,
+    timeout: int = 300,
+    log_dir: Path | None = None,
+) -> subprocess.CompletedProcess:
+    # stdin=DEVNULL: under the KotorMCP stdio server a worker thread holds a
+    # blocking read on the inherited protocol pipe, and a Blender child that
+    # inherits that handle stalls until the timeout on Windows. Children must
+    # never share the MCP protocol stdin.
+    result = subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+        stdin=subprocess.DEVNULL,
+    )
+    target_log_dir = Path(log_dir) if log_dir is not None else DEFAULT_LOG_DIR
+    target_log_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%fZ")
+    log_path = target_log_dir / f"blender_day4_{stamp}.log"
     log_path.write_text(
         "COMMAND:\n" + " ".join(args) + "\n\nSTDOUT:\n" + (result.stdout or "") + "\n\nSTDERR:\n" + (result.stderr or ""),
         encoding="utf-8",
@@ -700,6 +740,7 @@ def roundtrip_validate(
     intermediate: Dict[str, Any],
     *,
     blender_executable: str | Path | None = None,
+    log_dir: Path | None = None,
 ) -> Dict[str, Any]:
     """Re-import the FBX through Blender and compare structural counts."""
 
@@ -717,7 +758,7 @@ def roundtrip_validate(
         "--validation-output",
         str(validation_path),
     ]
-    result = _run_blender(cmd, timeout=300)
+    result = _run_blender(cmd, timeout=300, log_dir=log_dir)
     if result.returncode != 0:
         raise FBXExportFailure(f"Blender roundtrip validation failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
     if not validation_path.exists():
@@ -839,6 +880,8 @@ def export_to_fbx(
     baked_clips: List[SampledClip],
     aligned_skeleton: AlignedSkeleton,
     options: FBXExportOptions,
+    *,
+    log_dir: Path | None = None,
 ) -> FBXExportManifest:
     """Export a rebound mesh, aligned skeleton, and baked clips to one FBX."""
 
@@ -872,7 +915,7 @@ def export_to_fbx(
         "--options",
         json.dumps(_options_to_dict(options), sort_keys=True),
     ]
-    result = _run_blender(cmd, timeout=300)
+    result = _run_blender(cmd, timeout=300, log_dir=log_dir)
     if result.returncode != 0:
         raise FBXExportFailure(f"Blender export failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
     if not output_path.exists():
@@ -880,7 +923,7 @@ def export_to_fbx(
 
     fbx_sha = compute_sha256(output_path)
     roundtrip_metrics = (
-        roundtrip_validate(output_path, intermediate, blender_executable=blender_exe)
+        roundtrip_validate(output_path, intermediate, blender_executable=blender_exe, log_dir=log_dir)
         if options.run_roundtrip_validation
         else {}
     )
@@ -947,13 +990,20 @@ def export_day4_pmbam_g1a1(
     *,
     fps: float = 60.0,
     run_roundtrip_validation: bool = True,
+    log_dir: str | Path | None = None,
 ) -> FBXExportManifest:
     rebound, baked, aligned, options = build_day4_pmbam_g1a1_asset(
         output_path,
         fps=fps,
         run_roundtrip_validation=run_roundtrip_validation,
     )
-    return export_to_fbx(rebound, baked, aligned, options)
+    return export_to_fbx(
+        rebound,
+        baked,
+        aligned,
+        options,
+        log_dir=Path(log_dir) if log_dir is not None else None,
+    )
 
 
 def build_day45_pmbam_g1a1_asset(

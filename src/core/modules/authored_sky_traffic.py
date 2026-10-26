@@ -65,6 +65,9 @@ class AuthoredSkyTraffic:
     fixed_facing_degrees: float = 0.0
     position_offset: Vec3 = (0.0, 0.0, 0.0)
     altitude_offset: float = 0.0
+    fade_in_seconds: float = 0.0
+    fade_out_seconds: float = 0.0
+    hidden_reset_seconds: float = 0.0
     interpolation: str = "linear"
     enabled: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -105,6 +108,8 @@ class SkyTrafficSample:
     position: Vec3
     travel_direction: Vec3
     facing_direction: Vec3 | None
+    visibility_alpha: float
+    hidden_for_reset: bool
 
 
 @dataclass(frozen=True)
@@ -232,6 +237,7 @@ def normalise_authored_sky_traffic(data: Any) -> AuthoredSkyTraffic:
     path = dict(source.get("path")) if isinstance(source.get("path"), dict) else {}
     timing = dict(source.get("timing")) if isinstance(source.get("timing"), dict) else {}
     facing = dict(source.get("facing")) if isinstance(source.get("facing"), dict) else {}
+    visibility = dict(source.get("visibility")) if isinstance(source.get("visibility"), dict) else {}
     points_value = path.get("control_points", source.get("control_points", source.get("path_points", ())))
     points = tuple(_control_point_from_value(value, index) for index, value in enumerate(tuple(points_value or ())))
 
@@ -264,6 +270,10 @@ def normalise_authored_sky_traffic(data: Any) -> AuthoredSkyTraffic:
         "loop",
         "closed_path",
         "facing",
+        "visibility",
+        "fade_in_seconds",
+        "fade_out_seconds",
+        "hidden_reset_seconds",
         "facing_mode",
         "fixed_facing_degrees",
         "offset",
@@ -284,6 +294,11 @@ def normalise_authored_sky_traffic(data: Any) -> AuthoredSkyTraffic:
     offset = source.get("position_offset", source.get("offset", (0.0, 0.0, 0.0)))
     fixed_facing = _optional_float(facing.get("fixed_degrees", source.get("fixed_facing_degrees", 0.0)))
     altitude = _optional_float(source.get("altitude_offset", source.get("altitude", 0.0)))
+    fade_in = _optional_float(visibility.get("fade_in_seconds", source.get("fade_in_seconds", 0.0)))
+    fade_out = _optional_float(visibility.get("fade_out_seconds", source.get("fade_out_seconds", 0.0)))
+    hidden_reset = _optional_float(
+        visibility.get("hidden_reset_seconds", source.get("hidden_reset_seconds", 0.0))
+    )
     return AuthoredSkyTraffic(
         traffic_id=str(source.get("id") or source.get("traffic_id") or _legacy_sky_traffic_id(source)).strip(),
         name=str(source.get("name") or "Sky Traffic").strip()[:64],
@@ -300,6 +315,9 @@ def normalise_authored_sky_traffic(data: Any) -> AuthoredSkyTraffic:
         fixed_facing_degrees=0.0 if fixed_facing is None else fixed_facing,
         position_offset=_vec3(offset, default=(0.0, 0.0, 0.0)),
         altitude_offset=0.0 if altitude is None else altitude,
+        fade_in_seconds=0.0 if fade_in is None else fade_in,
+        fade_out_seconds=0.0 if fade_out is None else fade_out,
+        hidden_reset_seconds=0.0 if hidden_reset is None else hidden_reset,
         interpolation=str(path.get("interpolation", source.get("interpolation", "linear")) or "linear").strip().lower(),
         enabled=_bool(source.get("enabled"), True),
         metadata=metadata,
@@ -335,6 +353,11 @@ def authored_sky_traffic_to_kmap(traffic: AuthoredSkyTraffic) -> dict[str, Any]:
             "facing": {
                 "mode": traffic.facing_mode,
                 "fixed_degrees": float(traffic.fixed_facing_degrees),
+            },
+            "visibility": {
+                "fade_in_seconds": float(traffic.fade_in_seconds),
+                "fade_out_seconds": float(traffic.fade_out_seconds),
+                "hidden_reset_seconds": float(traffic.hidden_reset_seconds),
             },
             "position_offset": [float(value) for value in traffic.position_offset],
             "altitude_offset": float(traffic.altitude_offset),
@@ -413,6 +436,9 @@ def create_authored_sky_traffic(
     fixed_facing_degrees: float = 0.0,
     position_offset: Any = (0.0, 0.0, 0.0),
     altitude_offset: float = 0.0,
+    fade_in_seconds: float = 0.0,
+    fade_out_seconds: float = 0.0,
+    hidden_reset_seconds: float = 0.0,
     enabled: bool = True,
     metadata: dict[str, Any] | None = None,
 ) -> AuthoredSkyTraffic:
@@ -437,6 +463,9 @@ def create_authored_sky_traffic(
             "fixed_facing_degrees": fixed_facing_degrees,
             "position_offset": position_offset,
             "altitude_offset": altitude_offset,
+            "fade_in_seconds": fade_in_seconds,
+            "fade_out_seconds": fade_out_seconds,
+            "hidden_reset_seconds": hidden_reset_seconds,
             "enabled": enabled,
             "metadata": {"source": "map_studio:sky_traffic", **dict(metadata or {})},
         }
@@ -504,6 +533,20 @@ def validate_authored_sky_traffic(
         _issue(issues, traffic, "SKY_TRAFFIC_FACING_INVALID", f"{label} fixed facing angle must be finite.", "fixed_facing_degrees")
     if not _finite_vec3(traffic.position_offset) or not math.isfinite(float(traffic.altitude_offset)):
         _issue(issues, traffic, "SKY_TRAFFIC_OFFSET_INVALID", f"{label} position and altitude offsets must be finite.", "position_offset")
+    visibility_values = (
+        ("fade_in_seconds", traffic.fade_in_seconds),
+        ("fade_out_seconds", traffic.fade_out_seconds),
+        ("hidden_reset_seconds", traffic.hidden_reset_seconds),
+    )
+    for field_name, value in visibility_values:
+        if not math.isfinite(float(value)) or float(value) < 0.0:
+            _issue(
+                issues,
+                traffic,
+                "SKY_TRAFFIC_VISIBILITY_TIMING_INVALID",
+                f"{label} {field_name} must be a non-negative finite number.",
+                field_name,
+            )
 
     point_ids: set[str] = set()
     if len(traffic.control_points) < 2:
@@ -529,10 +572,28 @@ def validate_authored_sky_traffic(
         _issue(issues, traffic, "SKY_TRAFFIC_TIMING_CONFLICT", f"{label} must use duration or speed, not both.", "timing")
     if not duration_ok and not speed_ok:
         _issue(issues, traffic, "SKY_TRAFFIC_TIMING_MISSING", f"{label} requires either a positive duration or speed.", "timing")
+    effective_duration = sky_traffic_effective_duration(traffic)
+    if (
+        effective_duration > 0.0
+        and traffic.fade_in_seconds + traffic.fade_out_seconds > effective_duration
+    ):
+        _issue(
+            issues,
+            traffic,
+            "SKY_TRAFFIC_VISIBILITY_OVERLAP",
+            f"{label} fade-in and fade-out windows exceed its motion duration.",
+            "visibility",
+        )
     if traffic.loop and not traffic.closed_path and len(traffic.control_points) >= 2:
         first = traffic.control_points[0].position
         last = traffic.control_points[-1].position
-        if _finite_vec3(first) and _finite_vec3(last) and _length(_sub(last, first)) > 1.0e-5:
+        reset_is_hidden = traffic.fade_out_seconds > 0.0 and traffic.hidden_reset_seconds > 0.0
+        if (
+            _finite_vec3(first)
+            and _finite_vec3(last)
+            and _length(_sub(last, first)) > 1.0e-5
+            and not reset_is_hidden
+        ):
             _issue(
                 issues,
                 traffic,
@@ -562,7 +623,7 @@ def validate_authored_sky_traffic_collection(
         seen_ids.add(item.traffic_id)
         if not item.enabled:
             continue
-        period = sky_traffic_effective_duration(item)
+        period = sky_traffic_effective_period(item)
         key = (item.room_resref, item.animation_name)
         previous = periods.get(key)
         if previous is None:
@@ -632,6 +693,27 @@ def sky_traffic_effective_duration(traffic: AuthoredSkyTraffic) -> float:
     return 0.0
 
 
+def sky_traffic_effective_period(traffic: AuthoredSkyTraffic) -> float:
+    """Return motion plus the hidden reset interval for one complete loop."""
+
+    duration = sky_traffic_effective_duration(traffic)
+    hidden = max(0.0, float(traffic.hidden_reset_seconds)) if math.isfinite(float(traffic.hidden_reset_seconds)) else 0.0
+    return duration + hidden
+
+
+def _visibility_alpha(traffic: AuthoredSkyTraffic, motion_time: float, duration: float) -> float:
+    if duration <= 0.0:
+        return 0.0
+    fade_in = max(0.0, float(traffic.fade_in_seconds))
+    fade_out = max(0.0, float(traffic.fade_out_seconds))
+    alpha = 1.0
+    if fade_in > 0.0:
+        alpha = min(alpha, max(0.0, min(1.0, motion_time / fade_in)))
+    if fade_out > 0.0:
+        alpha = min(alpha, max(0.0, min(1.0, (duration - motion_time) / fade_out)))
+    return alpha
+
+
 def _sample_distance(traffic: AuthoredSkyTraffic, distance: float) -> tuple[Vec3, Vec3, int]:
     segments = _segments(traffic)
     if not segments:
@@ -662,17 +744,23 @@ def sample_sky_traffic(traffic: AuthoredSkyTraffic, time_seconds: float) -> SkyT
     """Sample a deterministic room-local transform without Qt or renderer state."""
 
     duration = sky_traffic_effective_duration(traffic)
+    period = sky_traffic_effective_period(traffic)
     path_length = sky_traffic_path_length(traffic)
     requested = float(time_seconds)
     if duration <= 0.0:
         effective_time = 0.0
         normalized_time = 0.0
     elif traffic.loop:
-        effective_time = requested % duration
+        cycle_time = requested % period if period > 0.0 else 0.0
+        hidden_for_reset = cycle_time >= duration
+        effective_time = min(cycle_time, duration)
         normalized_time = effective_time / duration
     else:
+        hidden_for_reset = False
         effective_time = max(0.0, min(requested, duration))
         normalized_time = effective_time / duration
+    if duration <= 0.0:
+        hidden_for_reset = True
     distance = path_length * normalized_time
     position, travel_direction, segment_index = _sample_distance(traffic, distance)
     return SkyTrafficSample(
@@ -684,6 +772,12 @@ def sample_sky_traffic(traffic: AuthoredSkyTraffic, time_seconds: float) -> SkyT
         position=position,
         travel_direction=travel_direction,
         facing_direction=_facing_direction(traffic, travel_direction),
+        visibility_alpha=(
+            0.0
+            if hidden_for_reset
+            else _visibility_alpha(traffic, effective_time, duration)
+        ),
+        hidden_for_reset=hidden_for_reset,
     )
 
 
@@ -755,6 +849,7 @@ __all__ = [
     "read_authored_project_sky_traffic",
     "sample_sky_traffic",
     "sky_traffic_effective_duration",
+    "sky_traffic_effective_period",
     "sky_traffic_path_length",
     "validate_authored_sky_traffic",
     "validate_authored_sky_traffic_collection",

@@ -73,9 +73,36 @@ BAS_PRESET_MODELS: dict[str, tuple[tuple[str, str], ...]] = {
 BAS_MODE_LABELS: dict[str, str] = {
     "headless_body": "Headless Body",
     "full_body": "Full Body",
+    "character_preset": "Character Preset",
 }
 
 BAS_CATALOG_GAME_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 1
+
+
+class _BasCharacterCatalogSignals(QtCore.QObject):
+    ready = QtCore.Signal(object, object)
+    failed = QtCore.Signal(str, object)
+
+
+class _BasCharacterCatalogJob(QtCore.QRunnable):
+    """Resolve UTC presets away from the Qt UI thread."""
+
+    def __init__(self, manager: Any, revision: int | None) -> None:
+        super().__init__()
+        self.manager = manager
+        self.revision = revision
+        self.signals = _BasCharacterCatalogSignals()
+
+    @QtCore.Slot()
+    def run(self) -> None:
+        try:
+            from src.systems.bas.character_presets import build_bas_character_preset_catalog
+
+            catalog = build_bas_character_preset_catalog(self.manager)
+        except Exception as exc:  # pragma: no cover - installation-specific failure
+            self.signals.failed.emit(str(exc), self.revision)
+            return
+        self.signals.ready.emit(catalog, self.revision)
 
 
 class QtBodyAttachmentPanel(QtWidgets.QWidget):
@@ -88,6 +115,7 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
     slotSelected = QtCore.Signal(str)
     modeChanged = QtCore.Signal(str)
     catalogRefreshRequested = QtCore.Signal()
+    characterPresetRequested = QtCore.Signal(object)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
@@ -96,9 +124,14 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
         self._slot_model_games: dict[str, str] = {}
         self._selected_slot = "head"
         self._mode = "headless_body"
+        self._composition_mode = "headless_body"
         self._syncing_layer_selection = False
         self._catalog: BasAttachmentCatalog | None = None
         self._catalog_revision: int | None = None
+        self._character_catalog: Any = None
+        self._character_catalog_revision: int | None = None
+        self._character_catalog_loading_revision: int | None = None
+        self._character_catalog_job: _BasCharacterCatalogJob | None = None
         self._syncing_color_combo = False
         self._build()
         self.set_selected_slot("head")
@@ -119,6 +152,42 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
         self.mode_combo.currentIndexChanged.connect(self._handle_mode_changed)
         mode_form.addRow("Mode", self.mode_combo)
         root.addLayout(mode_form)
+
+        self.character_preset_group = QtWidgets.QGroupBox("Canonical Character")
+        preset_layout = QtWidgets.QVBoxLayout(self.character_preset_group)
+        preset_form = QtWidgets.QFormLayout()
+        self.character_game_combo = QtWidgets.QComboBox(self.character_preset_group)
+        self.character_game_combo.addItem("Both games", "")
+        self.character_game_combo.addItem("KOTOR 1", "K1")
+        self.character_game_combo.addItem("KOTOR 2", "K2")
+        self.character_game_combo.currentIndexChanged.connect(self._populate_character_combo)
+        preset_form.addRow("Game", self.character_game_combo)
+        self.character_combo = QtWidgets.QComboBox(self.character_preset_group)
+        self.character_combo.setObjectName("basCharacterPresetComboBox")
+        self.character_combo.setEditable(True)
+        self.character_combo.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        self.character_combo.setToolTip(
+            "Search every effective UTC character template from both configured games."
+        )
+        self.character_combo.currentIndexChanged.connect(self._sync_character_preset_details)
+        completer = self.character_combo.completer()
+        completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        completer.setFilterMode(QtCore.Qt.MatchContains)
+        preset_form.addRow("Character", self.character_combo)
+        preset_layout.addLayout(preset_form)
+        self.character_preset_details = QtWidgets.QLabel(self.character_preset_group)
+        self.character_preset_details.setObjectName("basCharacterPresetDetails")
+        self.character_preset_details.setWordWrap(True)
+        self.character_preset_details.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        preset_layout.addWidget(self.character_preset_details)
+        self.apply_character_preset_button = QtWidgets.QPushButton(
+            "Load Canonical Character",
+            self.character_preset_group,
+        )
+        self.apply_character_preset_button.setObjectName("basApplyCharacterPresetButton")
+        self.apply_character_preset_button.clicked.connect(self._emit_character_preset)
+        preset_layout.addWidget(self.apply_character_preset_button)
+        root.addWidget(self.character_preset_group)
 
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(6)
@@ -196,6 +265,7 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
         root.addWidget(self.status)
         root.addStretch(1)
         self._refresh_layers()
+        self._sync_character_preset_visibility()
 
     def selected_slot(self) -> str:
         return self._selected_slot
@@ -208,17 +278,32 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
         if self._mode == mode:
             return
         self._mode = mode
+        if mode in {"headless_body", "full_body"}:
+            self._composition_mode = mode
         index = self.mode_combo.findData(mode)
         if index >= 0 and self.mode_combo.currentIndex() != index:
             self.mode_combo.blockSignals(True)
             self.mode_combo.setCurrentIndex(index)
             self.mode_combo.blockSignals(False)
-        if mode == "full_body" and self._selected_slot == "head":
+        if self._composition_mode == "full_body" and self._selected_slot == "head":
+            self.set_selected_slot("mask")
+        else:
+            self.set_selected_slot(self._selected_slot)
+        self._sync_character_preset_visibility()
+        self._refresh_layers()
+        self.modeChanged.emit(mode)
+        if mode == "character_preset":
+            QtCore.QTimer.singleShot(0, self.catalogRefreshRequested.emit)
+
+    def set_composition_mode(self, mode: str) -> None:
+        """Set the selected preset's real body mode without leaving preset UI."""
+
+        self._composition_mode = mode if mode in {"headless_body", "full_body"} else "headless_body"
+        if self._composition_mode == "full_body" and self._selected_slot == "head":
             self.set_selected_slot("mask")
         else:
             self.set_selected_slot(self._selected_slot)
         self._refresh_layers()
-        self.modeChanged.emit(mode)
 
     def selected_model_resref(self) -> str:
         text = str(self.model_combo.currentText() or "").strip()
@@ -239,7 +324,9 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
             button.setChecked(key == slot)
         self.slot_label.setText(BAS_SLOT_LABELS[slot])
         self._populate_model_combo(slot)
-        attachable = slot not in {"left_hand", "right_hand"} and not (slot == "head" and self._mode == "full_body")
+        attachable = slot not in {"left_hand", "right_hand"} and not (
+            slot == "head" and self._composition_mode == "full_body"
+        )
         self.model_combo.setEnabled(attachable)
         self.attach_button.setEnabled(attachable)
         self.clear_button.setEnabled(slot != "body" and attachable)
@@ -293,6 +380,104 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
 
     def attachment_catalog_revision(self) -> int | None:
         return self._catalog_revision
+
+    def character_preset_catalog(self):
+        return self._character_catalog
+
+    def character_preset_catalog_revision(self) -> int | None:
+        return self._character_catalog_revision
+
+    def load_character_preset_catalog(self, manager: Any, *, revision: int | None = None) -> None:
+        """Start one background UTC/UTI preset scan for the active resource revision."""
+
+        normalized_revision = int(revision) if revision is not None else None
+        if self._character_catalog is not None and (
+            normalized_revision is None or self._character_catalog_revision == normalized_revision
+        ):
+            return
+        if self._character_catalog_job is not None and self._character_catalog_loading_revision == normalized_revision:
+            return
+        self._character_catalog_loading_revision = normalized_revision
+        self.character_combo.setEnabled(False)
+        self.apply_character_preset_button.setEnabled(False)
+        self.character_preset_details.setText("Reading canonical UTC characters and equipment…")
+        job = _BasCharacterCatalogJob(manager, normalized_revision)
+        job.signals.ready.connect(self._handle_character_catalog_ready)
+        job.signals.failed.connect(self._handle_character_catalog_failed)
+        self._character_catalog_job = job
+        QtCore.QThreadPool.globalInstance().start(job)
+
+    @QtCore.Slot(object, object)
+    def _handle_character_catalog_ready(self, catalog: Any, revision: Any) -> None:
+        if self._character_catalog_loading_revision is not None and revision != self._character_catalog_loading_revision:
+            return
+        self._character_catalog_job = None
+        self._character_catalog_loading_revision = None
+        self._character_catalog = catalog if catalog is not None and not getattr(catalog, "empty", True) else None
+        self._character_catalog_revision = int(revision) if revision is not None else None
+        self._populate_character_combo()
+        if self._character_catalog is None:
+            errors = tuple(getattr(catalog, "errors", ()) or ())
+            self.character_preset_details.setText(
+                errors[0] if errors else "No installed UTC character presets were found."
+            )
+
+    @QtCore.Slot(str, object)
+    def _handle_character_catalog_failed(self, message: str, revision: Any) -> None:
+        if self._character_catalog_loading_revision is not None and revision != self._character_catalog_loading_revision:
+            return
+        self._character_catalog_job = None
+        self._character_catalog_loading_revision = None
+        self.character_combo.setEnabled(False)
+        self.apply_character_preset_button.setEnabled(False)
+        self.character_preset_details.setText(f"Character preset scan failed: {message}")
+
+    def _populate_character_combo(self, *_args) -> None:
+        current = self.selected_character_preset()
+        current_key = str(getattr(current, "key", "") or "")
+        game = str(self.character_game_combo.currentData() or "").upper()
+        self.character_combo.blockSignals(True)
+        self.character_combo.clear()
+        presets = self._character_catalog.for_game(game) if self._character_catalog is not None else ()
+        selected_index = -1
+        for preset in presets:
+            self.character_combo.addItem(preset.label, preset)
+            if preset.key == current_key:
+                selected_index = self.character_combo.count() - 1
+        if selected_index >= 0:
+            self.character_combo.setCurrentIndex(selected_index)
+        self.character_combo.blockSignals(False)
+        self.character_combo.setEnabled(bool(presets))
+        self._sync_character_preset_details()
+
+    def selected_character_preset(self):
+        index = self.character_combo.currentIndex()
+        if index < 0 or self.character_combo.currentText().strip() != self.character_combo.itemText(index).strip():
+            return None
+        value = self.character_combo.currentData()
+        return value if value is not None and hasattr(value, "utc_resref") else None
+
+    def _sync_character_preset_details(self, *_args) -> None:
+        preset = self.selected_character_preset()
+        if preset is None:
+            if self._character_catalog is not None:
+                self.character_preset_details.setText("Choose a character from the installed game templates.")
+            self.apply_character_preset_button.setEnabled(False)
+            return
+        details = str(getattr(preset, "summary", "") or "")
+        warnings = tuple(getattr(preset, "warnings", ()) or ())
+        if warnings:
+            details += f"\nWarnings: {'; '.join(warnings[:3])}"
+        self.character_preset_details.setText(details)
+        self.apply_character_preset_button.setEnabled(bool(getattr(preset, "loadable", False)))
+
+    def _emit_character_preset(self) -> None:
+        preset = self.selected_character_preset()
+        if preset is not None and bool(getattr(preset, "loadable", False)):
+            self.characterPresetRequested.emit(preset)
+
+    def _sync_character_preset_visibility(self) -> None:
+        self.character_preset_group.setVisible(self._mode == "character_preset")
 
     def _populate_model_combo(self, slot: str) -> None:
         self.model_combo.blockSignals(True)
@@ -374,7 +559,7 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
 
     def _emit_attach(self) -> None:
         if self._selected_slot in {"left_hand", "right_hand"} or (
-            self._selected_slot == "head" and self._mode == "full_body"
+            self._selected_slot == "head" and self._composition_mode == "full_body"
         ):
             return
         self.attachRequested.emit(self._selected_slot, self.selected_model_resref())
@@ -400,7 +585,9 @@ class QtBodyAttachmentPanel(QtWidgets.QWidget):
             if slot == "body":
                 model = model or "BODY"
                 state = "Base"
-            elif slot in {"left_hand", "right_hand"} or (slot == "head" and self._mode == "full_body"):
+            elif slot in {"left_hand", "right_hand"} or (
+                slot == "head" and self._composition_mode == "full_body"
+            ):
                 state = "Socket"
             else:
                 state = "Attached" if model else "Empty"

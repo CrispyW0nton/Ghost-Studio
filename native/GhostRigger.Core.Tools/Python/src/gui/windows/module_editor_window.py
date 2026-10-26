@@ -1327,6 +1327,8 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self.import_mod_file_action = QtGui.QAction("Import Module File (.mod / .rim)...", self)
         self.import_mod_file_action.setObjectName("mapStudioImportModFileAction")
         self.import_stock_module_action = QtGui.QAction("Import Stock Module (RIM)...", self)
+        self.import_unreal_level_action = QtGui.QAction("Import / Reimport Unreal Level...", self)
+        self.import_unreal_level_action.setObjectName("mapStudioUnrealImportAction")
         self.import_obj_map_action = QtGui.QAction("Import OBJ Map...", self)
         self.import_obj_map_action.setObjectName("mapStudioImportObjMapAction")
         self.import_obj_map_action.setToolTip(
@@ -1347,7 +1349,10 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self.import_library_asset_action = QtGui.QAction("Import Selected Library Asset", self)
         self.import_texture_action = QtGui.QAction("Import Texture to Project...", self)
         self.import_texture_action.setObjectName("mapStudioImportTextureAction")
-        self.export_fbx_action = QtGui.QAction("Export FBX...", self)
+        self.export_fbx_action = QtGui.QAction("Export Whole Level as FBX...", self)
+        self.export_fbx_action.setToolTip("Export all enabled visible rooms and placed models to one static FBX, with textures and a scene manifest.")
+        self.export_obj_action = QtGui.QAction("Export Whole Level as OBJ...", self)
+        self.export_obj_action.setToolTip("Export the level to one OBJ with separate mesh groups, an MTL, textures and a scene manifest.")
         self.export_package_action = QtGui.QAction("Export Scene Package...", self)
         self.close_action = QtGui.QAction("Close", self)
         self.undo_action = QtGui.QAction("Undo", self)
@@ -1391,6 +1396,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         file_menu.addAction(self.import_mod_file_action)
         file_menu.addAction(self.import_module_action)
         file_menu.addAction(self.import_stock_module_action)
+        file_menu.addAction(self.import_unreal_level_action)
         file_menu.addAction(self.import_obj_map_action)
         file_menu.addAction(self.convert_all_stock_rooms_action)
         file_menu.addAction(self.add_room_from_module_action)
@@ -1399,6 +1405,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         file_menu.addAction(self.import_texture_action)
         file_menu.addSeparator()
         file_menu.addAction(self.export_fbx_action)
+        file_menu.addAction(self.export_obj_action)
         file_menu.addAction(self.export_package_action)
         file_menu.addSeparator()
         file_menu.addAction(self.close_action)
@@ -1644,7 +1651,10 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self._refresh_map_studio_tool_index()
         self.blueprints_tab = BlueprintsTab()
         self.blueprints_tab.adopt_script_hook_tools(self.builder_tab.scriptHooksGroup)
+        from src.gui.qt_lib.panels.unreal_pipeline_panel import UnrealPipelinePanel
+        self.unreal_pipeline_tab = UnrealPipelinePanel(self)
         for label, widget in (
+            ("Unreal", self.unreal_pipeline_tab),
             ("Rooms", self.rooms_tab),
             ("Place", self.placement_tab),
             ("Walkmesh (WOK)", self.walkmesh_tab),
@@ -1850,6 +1860,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self.import_module_action.triggered.connect(self.import_module)
         self.import_mod_file_action.triggered.connect(self.import_module_file)
         self.import_stock_module_action.triggered.connect(self._import_stock_module)
+        self.import_unreal_level_action.triggered.connect(self.import_unreal_level)
         self.import_obj_map_action.triggered.connect(self.import_obj_map)
         self.convert_all_stock_rooms_action.triggered.connect(self._convert_all_stock_rooms)
         self.add_room_from_module_action.triggered.connect(self._add_room_from_module)
@@ -1857,6 +1868,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self.import_library_asset_action.triggered.connect(self.import_selected_library_asset)
         self.import_texture_action.triggered.connect(self.import_project_texture)
         self.export_fbx_action.triggered.connect(lambda: self.export_fbx(False))
+        self.export_obj_action.triggered.connect(lambda: self._export_level_geometry("obj", False))
         self.export_package_action.triggered.connect(lambda: self.build_module_files())
         self.close_action.triggered.connect(self.close)
         self.undo_action.triggered.connect(self.undo_map_studio_command)
@@ -2467,6 +2479,14 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
             self.statusBar().showMessage(f"Save As failed: {exc}", 7000)
             return
         self._refresh_all(f"Saved {Path(path).name}.")
+
+    def import_unreal_level(self) -> None:
+        self.open_unreal_pipeline()
+
+    def open_unreal_pipeline(self, snapshot_path="") -> None:
+        self.workflow_tabs.setCurrentWidget(self.unreal_pipeline_tab)
+        if snapshot_path:
+            self.unreal_pipeline_tab.set_source(snapshot_path)
 
     def import_obj_map(self) -> None:
         """Analyze, review, and atomically commit one custom OBJ room."""
@@ -3650,6 +3670,10 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         selected = self._authored_interactive_template_requests()
         resources: list[tuple[str, str, bytes]] = list(tuple(getattr(proof_build, "resources", ()) or ()))
         issues: list[Any] = list(tuple(getattr(proof_build, "issues", ()) or ()))
+        secondary_motion_profiles: dict[str, bytes] = {
+            str(profile_id): bytes(data)
+            for profile_id, data in tuple(getattr(proof_build, "secondary_motion_profiles", ()) or ())
+        }
         report = None
         if selected:
             from src.core.workflow.placeable_builder_service import referenced_interactive_resource_report
@@ -3662,6 +3686,11 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
             )
             resources.extend(tuple(report.resources or ()))
             issues.extend(tuple(report.issues or ()))
+            for profile_id, data in tuple(report.secondary_motion_profiles or ()):
+                prior = secondary_motion_profiles.get(str(profile_id))
+                if prior is not None and prior != bytes(data):
+                    raise ValueError(f"Secondary-motion profile collision for {profile_id!r}.")
+                secondary_motion_profiles[str(profile_id)] = bytes(data)
 
         merged: dict[tuple[str, str], bytes] = {}
         for resref, restype, data in resources:
@@ -3674,7 +3703,11 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
                 raise ValueError(f"PLCaa/placeable export collision for {key[0]}.{key[1]}.")
             merged[key] = payload
         merged_resources = tuple((resref, restype, data) for (resref, restype), data in sorted(merged.items()))
-        self.controller.set_authored_placeable_resources(merged_resources, issues=issues)
+        self.controller.set_authored_placeable_resources(
+            merged_resources,
+            issues=issues,
+            secondary_motion_profiles=tuple(sorted(secondary_motion_profiles.items())),
+        )
         for issue in issues:
             severity = str(getattr(issue, "severity", "warning") or "warning").title()
             self._log(f"Placeable Library {severity}: {getattr(issue, 'message', issue)}")
@@ -11524,16 +11557,39 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
         self._refresh_all(message)
 
     def export_fbx(self, dry_run: bool = False) -> None:
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export KMAP Scene", f"{self.project.name}.fbx", "FBX files (*.fbx)")
+        self._export_level_geometry("fbx", dry_run)
+
+    def _export_level_geometry(self, format_name: str, dry_run: bool = False) -> None:
+        from src.core.level import LevelExportOptions
+        from src.gui.qt_lib.dialogs.level_scene_export_dialog import run_level_scene_export
+
+        label = format_name.upper()
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, f"Export Whole Level as {label}", f"{self.project.name}.{format_name}",
+            f"{label} files (*.{format_name})")
         if not path:
             return
-        result = self.controller.export_fbx(path, dry_run=dry_run)
+        if not Path(path).suffix:
+            path += f".{format_name}"
+        try:
+            result = run_level_scene_export(
+                self, self.project, path, LevelExportOptions(dry_run=dry_run),
+                resource_manager=self.resource_manager,
+                template_resources=self.controller.authored_project_extra_resources())
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Level Export Failed", str(exc))
+            return
         self.validation_panel.set_issues(result.issues)
         self._log(result.message)
         if result.manifest_path:
             self._log(f"Manifest: {result.manifest_path}")
         for warning in result.warnings:
             self._log(warning)
+        if result.ok:
+            self._last_output_dir = str(Path(path).parent)
+            QtWidgets.QMessageBox.information(self, "Level Export Complete", result.message)
+        else:
+            QtWidgets.QMessageBox.warning(self, "Level Export Failed", result.message)
 
     def open_output_folder(self) -> None:
         if self._last_output_dir:
@@ -11838,6 +11894,7 @@ class ModuleEditorWindow(QtWidgets.QMainWindow):
             self.import_library_asset_action,
             self.import_texture_action,
             self.export_fbx_action,
+            self.export_obj_action,
             self.export_package_action,
             self.undo_action,
             self.redo_action,

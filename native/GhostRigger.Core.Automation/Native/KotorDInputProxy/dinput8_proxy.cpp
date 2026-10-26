@@ -292,6 +292,50 @@ BOOL CALLBACK findHostWindow(HWND window, LPARAM parameter) {
     return TRUE;
 }
 
+template <typename Device>
+HRESULT holdBackgroundAcquireUntilForeground(Device *real, HRESULT result) {
+    if (SUCCEEDED(result) || _wcsicmp(g_hostExe.c_str(), L"swkotor.exe") != 0) {
+        return result;
+    }
+
+    HostWindowSearch search;
+    search.processId = GetCurrentProcessId();
+    EnumWindows(findHostWindow, reinterpret_cast<LPARAM>(&search));
+    if (!search.window) {
+        return result;
+    }
+    g_hostWindow = search.window;
+
+    appendLog("background DirectInput acquire paused until KOTOR regains focus");
+    HRESULT reacquired = result;
+    while (IsWindow(search.window)) {
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (message.message == WM_QUIT) {
+                PostQuitMessage(static_cast<int>(message.wParam));
+                return result;
+            }
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+        if (GetForegroundWindow() == search.window) {
+            reacquired = real->Acquire();
+            if (SUCCEEDED(reacquired)) {
+                break;
+            }
+        }
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 25, QS_ALLINPUT);
+    }
+    if (!IsWindow(search.window)) {
+        return result;
+    }
+    appendLog(
+        "background DirectInput acquire resumed hr="
+        + std::to_string(static_cast<long>(reacquired))
+    );
+    return reacquired;
+}
+
 bool activateHostWindowForInput() {
     HostWindowSearch search;
     search.processId = GetCurrentProcessId();
@@ -436,6 +480,43 @@ void parseCommandLine(const std::string &line) {
         input >> holdText;
         clickForegroundWindowAt(
             parseInt(xText, 0), parseInt(yText, 0), parseInt(holdText, 50)
+        );
+        return;
+    }
+    if (command == "mouse_post_at") {
+        std::string xText;
+        std::string yText;
+        if (!(input >> xText >> yText)) {
+            appendLog("ignored malformed mouse_post_at");
+            return;
+        }
+        const int screenX = parseInt(xText, 0);
+        const int screenY = parseInt(yText, 0);
+        const bool foreground = activateHostWindowForInput();
+        HWND window = GetForegroundWindow();
+        DWORD windowProcess = 0;
+        POINT clientPoint = {screenX, screenY};
+        const bool valid = foreground && window
+            && GetWindowThreadProcessId(window, &windowProcess)
+            && windowProcess == GetCurrentProcessId()
+            && ScreenToClient(window, &clientPoint) != FALSE;
+        bool posted = false;
+        if (valid) {
+            const LPARAM point = MAKELPARAM(clientPoint.x, clientPoint.y);
+            const bool moved = PostMessageW(
+                window, WM_MOUSEMOVE, 0, point) != FALSE;
+            const bool down = PostMessageW(
+                window, WM_LBUTTONDOWN, MK_LBUTTON, point) != FALSE;
+            Sleep(40);
+            const bool up = PostMessageW(
+                window, WM_LBUTTONUP, 0, point) != FALSE;
+            posted = moved && down && up;
+        }
+        appendLog(
+            "mouse_post_at " + std::to_string(screenX) + " "
+            + std::to_string(screenY)
+            + " foreground=" + std::to_string(foreground)
+            + " posted=" + std::to_string(posted)
         );
         return;
     }
@@ -886,11 +967,22 @@ public:
     HRESULT STDMETHODCALLTYPE GetProperty(REFGUID prop, LPDIPROPHEADER header) override { return real_->GetProperty(prop, header); }
     HRESULT STDMETHODCALLTYPE SetProperty(REFGUID prop, LPCDIPROPHEADER header) override { return real_->SetProperty(prop, header); }
     HRESULT STDMETHODCALLTYPE Acquire() override {
-        const HRESULT hr = real_->Acquire();
-        appendLog(
-            "Acquire A kind=" + std::to_string(static_cast<int>(kind_))
-            + " hr=" + std::to_string(static_cast<long>(hr))
+        const HRESULT hr = holdBackgroundAcquireUntilForeground(
+            real_, real_->Acquire()
         );
+        const DWORD call = ++acquireCalls_;
+        // KOTOR retries Acquire every frame while its window is unfocused.
+        // Opening and flushing the log file on each retry can produce
+        // megabytes of synchronous I/O and make the game appear hung. Keep the
+        // first three observations and subsequent state transitions only.
+        if (call <= 3 || hr != lastAcquireResult_) {
+            appendLog(
+                "Acquire A kind=" + std::to_string(static_cast<int>(kind_))
+                + " call=" + std::to_string(call)
+                + " hr=" + std::to_string(static_cast<long>(hr))
+            );
+        }
+        lastAcquireResult_ = hr;
         return hr;
     }
     HRESULT STDMETHODCALLTYPE Unacquire() override { return real_->Unacquire(); }
@@ -993,6 +1085,8 @@ private:
     volatile LONG refs_ = 1;
     DWORD stateCalls_ = 0;
     DWORD dataCalls_ = 0;
+    DWORD acquireCalls_ = 0;
+    HRESULT lastAcquireResult_ = S_OK;
 };
 
 class ProxyDeviceW final : public IDirectInputDevice8W {
@@ -1026,7 +1120,9 @@ public:
     HRESULT STDMETHODCALLTYPE EnumObjects(LPDIENUMDEVICEOBJECTSCALLBACKW cb, LPVOID ref, DWORD flags) override { return real_->EnumObjects(cb, ref, flags); }
     HRESULT STDMETHODCALLTYPE GetProperty(REFGUID prop, LPDIPROPHEADER header) override { return real_->GetProperty(prop, header); }
     HRESULT STDMETHODCALLTYPE SetProperty(REFGUID prop, LPCDIPROPHEADER header) override { return real_->SetProperty(prop, header); }
-    HRESULT STDMETHODCALLTYPE Acquire() override { return real_->Acquire(); }
+    HRESULT STDMETHODCALLTYPE Acquire() override {
+        return holdBackgroundAcquireUntilForeground(real_, real_->Acquire());
+    }
     HRESULT STDMETHODCALLTYPE Unacquire() override { return real_->Unacquire(); }
     HRESULT STDMETHODCALLTYPE GetDeviceState(DWORD cbData, LPVOID data) override {
         loadCommands();

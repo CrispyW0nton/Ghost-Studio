@@ -40,6 +40,7 @@ from src.gui.qt_lib.assets.qt_theme import (
     update_legacy_palette,
 )
 from src.gui.qt_lib.panels.qt_workflow_rail import QtWorkflowRail
+from src.gui.panels.qt_secondary_motion_editor import QtSecondaryMotionEditor
 from src.systems.bas.attachment_alignment import default_bas_attachment_transform
 from src.systems.bas.attachment_catalog import repair_bas_body_texture_references
 from src.systems.bas.head_resolution import normalize_bas_model_resref, resolve_bas_head_resref
@@ -1128,7 +1129,20 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
         right_split.setStretchFactor(1, 2)
         self.head_builder_properties = QtHeadBuilderProperties(self)
         self._right_stack = QtWidgets.QStackedWidget(self)
-        self._right_stack.addWidget(right_split)
+        self.character_authoring_tabs = QtWidgets.QTabWidget(self)
+        self.character_authoring_tabs.setObjectName("characterBuilderAuthoringTabs")
+        self.character_authoring_tabs.addTab(right_split, "Rig & Deformation")
+        self.secondary_motion_editor = QtSecondaryMotionEditor(
+            self,
+            target_kind="native_character",
+            target_game=str(getattr(self.scene, "game_version", "K1") or "K1"),
+        )
+        metadata = getattr(self.scene, "metadata", None)
+        if isinstance(metadata, dict) and isinstance(metadata.get("secondary_motion"), dict):
+            self.secondary_motion_editor.set_profile(metadata["secondary_motion"])
+        self.secondary_motion_editor.profileChanged.connect(self._on_secondary_motion_profile_changed)
+        self.character_authoring_tabs.addTab(self.secondary_motion_editor, "Secondary Motion")
+        self._right_stack.addWidget(self.character_authoring_tabs)
         self._right_stack.addWidget(self.head_builder_properties)
         right_layout.addWidget(self._right_stack, 1)
 
@@ -1402,6 +1416,7 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
         if bas_panel is not None:
             bas_panel.attachRequested.connect(self._on_bas_panel_attach_requested)
             bas_panel.clearRequested.connect(self._on_bas_panel_clear_requested)
+            bas_panel.characterPresetRequested.connect(self._on_bas_character_preset_requested)
             bas_panel.slotSelected.connect(self._ensure_cb_bas_attachment_catalog)
             bas_panel.catalogRefreshRequested.connect(self._ensure_cb_bas_attachment_catalog)
             QtCore.QTimer.singleShot(0, self._ensure_cb_bas_attachment_catalog)
@@ -1477,10 +1492,22 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
         if not game:
             return
         self.scene.game_version = game
+        if hasattr(self, "secondary_motion_editor"):
+            self.secondary_motion_editor.set_target_game(game)
         self.scene.dirty = True
         self._refresh_skeleton_template_options()
         self._update_title()
         self._schedule_live_validation("game_changed")
+
+    @QtCore.Slot(object)
+    def _on_secondary_motion_profile_changed(self, profile: object) -> None:
+        metadata = getattr(self.scene, "metadata", None)
+        if not isinstance(metadata, dict):
+            metadata = {}
+            setattr(self.scene, "metadata", metadata)
+        metadata["secondary_motion"] = dict(profile) if isinstance(profile, dict) else {}
+        self.scene.dirty = True
+        self._schedule_live_validation("secondary_motion_changed")
 
     @QtCore.Slot(object)
     def _on_properties_mode_changed(self, mode) -> None:
@@ -5020,7 +5047,12 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
         except Exception:                                  # pragma: no cover
             log.exception("Could not build attachment preview model")
 
-    def _rebuild_cb_bas_preview(self, body: Any) -> None:
+    def _rebuild_cb_bas_preview(
+        self,
+        body: Any,
+        *,
+        skip_unsupported: bool = False,
+    ) -> None:
         """Compose the body with every attached BAS layer and present it."""
 
         self._bas_preview_body = body
@@ -5034,13 +5066,23 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
             attachment_models=attachment_models,
             attachment_transforms=attachment_transforms,
             name=f"{getattr(body, 'name', 'body')}_bas_preview",
+            skip_unsupported=skip_unsupported,
         )
+        skipped_rows = tuple(
+            getattr(preview, "_gr_bas_skipped_attachments", ()) or ()
+        )
+        self._bas_last_skipped_attachments = skipped_rows
+        skipped_slots = {
+            str(row.get("slot", ""))
+            for row in skipped_rows
+            if isinstance(row, dict)
+        }
         setattr(self.scene, "preview_model", preview)
         metadata = getattr(self.scene, "metadata", None)
         if isinstance(metadata, dict):
             metadata.setdefault("body_attachment_system", {})
             metadata["body_attachment_system"].update({
-                "active": bool(attachment_models),
+                "active": bool(set(attachment_models) - skipped_slots),
                 "preview_owner": "character_builder",
                 "attachments": {slot: resref for slot, (_item, resref) in self._bas_preview_attachments.items()},
                 "layers": [
@@ -5048,7 +5090,11 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
                         "slot": slot,
                         "socket": bas_socket_for_slot(slot),
                         "resref": resref,
-                        "enabled": True,
+                        "enabled": slot not in skipped_slots,
+                        "reason": (
+                            "model has no compatible visual socket"
+                            if slot in skipped_slots else ""
+                        ),
                     }
                     for slot, (_item, resref) in self._bas_preview_attachments.items()
                 ],
@@ -5097,24 +5143,199 @@ class QtCharacterBuilderWindow(QtWidgets.QMainWindow):
         revision = getattr(manager, "revision", None)
         revision_getter = getattr(panel, "attachment_catalog_revision", None)
         current_revision = revision_getter() if callable(revision_getter) else None
-        if panel.attachment_catalog() is not None and (
+        catalog_ready = panel.attachment_catalog() is not None and (
             revision is None or current_revision == int(revision)
-        ):
-            return
-        try:
-            from src.systems.bas.attachment_catalog import build_bas_attachment_catalog
+        )
+        if not catalog_ready:
+            try:
+                from src.systems.bas.attachment_catalog import build_bas_attachment_catalog
 
-            catalog = build_bas_attachment_catalog(manager)
-        except Exception:                                   # pragma: no cover
-            log.debug("Character Builder BAS catalog build failed", exc_info=True)
+                catalog = build_bas_attachment_catalog(manager)
+            except Exception:                               # pragma: no cover
+                log.debug("Character Builder BAS catalog build failed", exc_info=True)
+            else:
+                if not catalog.empty:
+                    panel.set_attachment_catalog(catalog, revision=revision)
+                    panel.set_status(
+                        "BAS catalog ready: "
+                        f"{len(catalog.entries('head'))} K1/K2 head choices and "
+                        f"{len(catalog.entries('body'))} headless body choices."
+                    )
+        if panel.selected_mode() == "character_preset" and hasattr(
+            panel, "load_character_preset_catalog"
+        ):
+            panel.load_character_preset_catalog(manager, revision=revision)
+
+    def _on_bas_character_preset_requested(self, preset) -> None:
+        """Replace the Character Studio preview with one canonical UTC build."""
+
+        panel = getattr(self.inspector, "body_attachment_panel", None)
+        game = str(getattr(preset, "game", "") or "").strip().upper()
+        body_resref = normalize_bas_model_resref(getattr(preset, "body_resref", ""))
+        body_game = str(getattr(preset, "body_game", "") or game).strip().upper()
+        if panel is None or game not in {"K1", "K2"} or not body_resref:
+            if panel is not None:
+                panel.set_status("The selected character preset has no loadable body model.")
             return
-        if not catalog.empty:
-            panel.set_attachment_catalog(catalog, revision=revision)
+        manager = self._ensure_game_resource_manager(game)
+        if manager is None:
+            panel.set_status(f"Configure the {game} installation before loading this character.")
+            return
+
+        def _load_model(resref: str, source_game: str):
+            source_manager = self._ensure_game_resource_manager(source_game) or manager
+            try:
+                if hasattr(source_manager, "load_model_strict"):
+                    return source_manager.load_model_strict(resref, source_game)
+                return source_manager.load_model(resref, source_game)
+            except Exception:
+                return None
+
+        body = _load_model(body_resref, body_game)
+        if body is None:
+            panel.set_status(f"Could not load canonical body {body_game}:{body_resref}.")
+            return
+        requested_layers: dict[str, str] = dict(getattr(preset, "slot_model_map", {}) or {})
+        requested_layer_games: dict[str, str] = dict(
+            getattr(preset, "slot_game_map", {}) or {}
+        )
+        head_resref = normalize_bas_model_resref(getattr(preset, "head_resref", ""))
+        if head_resref:
+            requested_layers["head"] = head_resref
+            requested_layer_games["head"] = str(
+                getattr(preset, "head_game", "") or game
+            ).strip().upper()
+        loaded_layers: dict[str, Any] = {}
+        missing: list[str] = []
+        for slot, resref in requested_layers.items():
+            layer_game = str(requested_layer_games.get(slot) or game).upper()
+            model = _load_model(resref, layer_game)
+            if model is None:
+                missing.append(f"{slot}: {layer_game}:{resref}")
+                continue
+            loaded_layers[slot] = model
+        if head_resref and "head" not in loaded_layers:
+            head_game = str(requested_layer_games.get("head") or game).upper()
             panel.set_status(
-                "BAS catalog ready: "
-                f"{len(catalog.entries('head'))} K1/K2 head choices and "
-                f"{len(catalog.entries('body'))} headless body choices."
+                f"Preset was not applied because canonical head {head_game}:{head_resref} could not be loaded."
             )
+            return
+
+        from src.systems.bas.character_presets import apply_bas_texture_override
+
+        apply_bas_texture_override(body, getattr(preset, "body_texture", ""))
+        if "head" in loaded_layers:
+            apply_bas_texture_override(loaded_layers["head"], getattr(preset, "head_texture", ""))
+        setattr(
+            body,
+            "_gr_bas_character_preset",
+            {
+                "game": game,
+                "utc_resref": str(getattr(preset, "utc_resref", "") or ""),
+                "display_name": str(getattr(preset, "display_name", "") or ""),
+                "body_game": body_game,
+                "head_game": str(getattr(preset, "head_game", "") or game).upper(),
+                "slot_games": dict(requested_layer_games),
+                "slot_models": dict(getattr(preset, "slot_model_map", {}) or {}),
+                "body_texture": str(getattr(preset, "body_texture", "") or ""),
+                "head_texture": str(getattr(preset, "head_texture", "") or ""),
+                "equipment_items": dict(getattr(preset, "equipment_item_map", {}) or {}),
+            },
+        )
+        try:
+            try:
+                from src.core.geometry import model_data as _md
+            except ImportError:                             # pragma: no cover
+                from core.geometry import model_data as _md  # type: ignore
+            composition_mode = str(
+                getattr(preset, "composition_mode", "headless_body") or "headless_body"
+            )
+            if composition_mode == "full_body":
+                character_mode = _md.CharacterMode.FULL_BODY
+                part_slot = _md.PartSlot.FULL_BODY
+            else:
+                character_mode = _md.CharacterMode.HEADLESS_BODY
+                part_slot = _md.PartSlot.HEADLESS_BODY
+            self.scene.set_mode(character_mode, locked=True)
+            self.scene.assign(
+                part_slot,
+                body,
+                resref=body_resref,
+                game_version=body_game,
+            )
+            self.scene.game_version = body_game
+            game_index = self._game_combo.findText(body_game) if hasattr(self, "_game_combo") else -1
+            if game_index >= 0:
+                self._game_combo.blockSignals(True)
+                self._game_combo.setCurrentIndex(game_index)
+                self._game_combo.blockSignals(False)
+            self._bas_preview_body = body
+            self._bas_preview_attachments = {
+                slot: (model, requested_layers[slot]) for slot, model in loaded_layers.items()
+            }
+            self._body_guides = {}
+            self._rebuild_cb_bas_preview(body, skip_unsupported=True)
+            skipped_rows = tuple(
+                getattr(self, "_bas_last_skipped_attachments", ()) or ()
+            )
+            skipped_slots = {
+                str(row.get("slot", ""))
+                for row in skipped_rows
+                if isinstance(row, dict)
+            }
+            for slot in skipped_slots:
+                self._bas_preview_attachments.pop(slot, None)
+            preset_metadata = getattr(body, "_gr_bas_character_preset", None)
+            if isinstance(preset_metadata, dict):
+                preset_metadata["nonvisual_slots"] = {
+                    slot: requested_layers.get(slot, "")
+                    for slot in sorted(skipped_slots)
+                    if requested_layers.get(slot, "")
+                }
+        except Exception as exc:                            # pragma: no cover
+            log.exception("Character Builder canonical BAS preset failed")
+            panel.set_status(f"Could not apply canonical {game} preset: {exc}")
+            return
+
+        self._sync_from_scene()
+        for slot in (
+            "head", "mask", "goggles", "left_hand", "right_hand",
+            "left_weapon", "belt", "right_weapon",
+        ):
+            if slot != "body":
+                panel.clear_slot_model(slot)
+        panel.set_composition_mode(composition_mode)
+        panel.set_mode("character_preset")
+        panel.set_body_model(body, resref=body_resref, game=body_game)
+        for slot, model in loaded_layers.items():
+            panel.set_slot_model(slot, model, resref=requested_layers[slot])
+        warnings = list(getattr(preset, "warnings", ()) or ())
+        if missing:
+            warnings.append("Missing optional layers: " + ", ".join(missing))
+        if skipped_rows:
+            warnings.append(
+                "Non-visual inventory kept as metadata: "
+                + ", ".join(
+                    f"{row.get('slot', 'item')} ({row.get('socket', 'socket')} unavailable)"
+                    for row in skipped_rows
+                    if isinstance(row, dict)
+                )
+            )
+        suffix = f" Warnings: {'; '.join(warnings[:3])}" if warnings else ""
+        source_games = {
+            source
+            for source in (body_game, *requested_layer_games.values())
+            if source in {"K1", "K2"} and source != game
+        }
+        source_note = (
+            f" Uses {', '.join(sorted(source_games))} legacy assets."
+            if source_games else ""
+        )
+        panel.set_status(
+            f"Loaded canonical {game} character {getattr(preset, 'display_name', '') or getattr(preset, 'utc_resref', '')}: "
+            f"{getattr(preset, 'summary', '')}.{source_note}{suffix}"
+        )
+        self._schedule_live_validation("bas_character_preset")
 
     def _on_bas_panel_attach_requested(self, slot: str, resref: str) -> None:
         """Attach a catalog item from the embedded BAS panel to the preview."""

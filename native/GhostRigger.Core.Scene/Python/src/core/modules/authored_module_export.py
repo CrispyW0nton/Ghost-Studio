@@ -122,6 +122,9 @@ class AuthoredModuleExportRequest:
     #: Extra (resref, restype, data) payloads bundled into the module: custom
     #: UTC/UTP/UTM/UTD templates, compiled NCS scripts, ported TPC textures.
     extra_resources: tuple[tuple[str, str, bytes], ...] = ()
+    #: Deterministic Patch Manager sidecars. These are never packed into the MOD
+    #: archive or installed as KOTOR resources.
+    secondary_motion_profiles: tuple[tuple[str, bytes], ...] = ()
 
 
 @dataclass
@@ -959,6 +962,61 @@ def _merge_authored_extra_resources(
     build.metadata["resource_collision_gate"] = gate
     build.metadata["resource_count"] = len(build.resources)
     return gate
+
+
+def _prepare_secondary_motion_sidecars(
+    build: AuthoredModuleBuild,
+    profiles: tuple[tuple[str, bytes], ...],
+) -> tuple[tuple[str, bytes], ...]:
+    """Validate merge-safe profile sidecars without treating them as MOD resources."""
+
+    accepted: dict[str, bytes] = {}
+    records: list[dict[str, Any]] = []
+    for profile_id, data in tuple(profiles or ()):
+        clean_id = str(profile_id or "").strip()
+        payload = bytes(data or b"")
+        if (
+            not clean_id
+            or len(clean_id) > 96
+            or any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-" for character in clean_id)
+            or not payload
+            or len(payload) > 262_144
+        ):
+            build.blocking_issues.append("Secondary-motion sidecar identity, size, or payload is invalid.")
+            continue
+        try:
+            document = json.loads(payload.decode("utf-8"))
+        except Exception as exc:
+            build.blocking_issues.append(f"Secondary-motion profile {clean_id!r} is not valid UTF-8 JSON: {exc}")
+            continue
+        if (
+            not isinstance(document, dict)
+            or document.get("schema") != "ghostrigger.secondary_motion_profile.v1"
+            or str(document.get("profile_id") or "") != clean_id
+        ):
+            build.blocking_issues.append(f"Secondary-motion profile {clean_id!r} does not match its v1 identity.")
+            continue
+        runtime = dict(document.get("runtime") or {})
+        if bool(runtime.get("write_enabled")) or str(runtime.get("state") or "capture_only") == "write_enabled":
+            build.blocking_issues.append(
+                f"Placeable secondary-motion profile {clean_id!r} requested writes without an accepted model-specific lifecycle gate."
+            )
+            continue
+        prior = accepted.get(clean_id)
+        if prior is not None and prior != payload:
+            build.blocking_issues.append(f"Secondary-motion profile collision for {clean_id!r}.")
+            continue
+        accepted[clean_id] = payload
+    for profile_id, payload in sorted(accepted.items()):
+        records.append({
+            "profile_id": profile_id,
+            "size": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "runtime_dependency": "cloth-dynamics-k2",
+            "write_enabled": False,
+        })
+    build.metadata["secondary_motion_profiles"] = records
+    return tuple(sorted(accepted.items()))
 
 
 def _validate_final_authored_resource_map(
@@ -1898,6 +1956,8 @@ def _placement_counts(placements: AuthoredGameplayPlacement) -> dict[str, int]:
 def build_authored_module(project: AuthoredModuleProject, *, game_root_dir: str = "") -> AuthoredModuleBuild:
     """Compile authored module intent into in-memory runtime resources."""
 
+    from .unreal_sector_projection import project_unreal_sector
+    project = project_unreal_sector(project)
     root = project.module_root
     room_geometries: dict[str, AuthoredRoomGeometry] = {}
     room_woks: dict[str, WOKData] = {}
@@ -2537,6 +2597,7 @@ def _augment_authored_manifest(
         "engine_contract": dict(build.metadata.get("engine_contract", {}) or {}),
         "smoke_expectations": dict(build.metadata.get("smoke_expectations", {})),
         "resources": [summary.__dict__ for summary in build.resource_summaries],
+        "secondary_motion_profiles": list(build.metadata.get("secondary_motion_profiles", []) or []),
         "package_ok": bool(package_result.ok),
         "package_verification": _verification_to_manifest(verification),
         "export_job": export_job,
@@ -2578,6 +2639,10 @@ def export_authored_module_project(request: AuthoredModuleExportRequest) -> Auth
     """Export the current authored Map Studio project through the MOD packager."""
 
     build = build_authored_module(request.project, game_root_dir=request.game_root_dir)
+    secondary_motion_sidecars = _prepare_secondary_motion_sidecars(
+        build,
+        request.secondary_motion_profiles,
+    )
     collision_gate = _merge_authored_extra_resources(build, tuple(request.extra_resources or ()))
     _refresh_final_resource_reference_metadata(build)
     _validate_final_authored_resource_map(build, collision_gate)
@@ -2632,6 +2697,22 @@ def export_authored_module_project(request: AuthoredModuleExportRequest) -> Auth
         resources=build.packaged_resources,
         now=datetime.now(timezone.utc),
     )
+    if package_result.ok and package_result.module_path and secondary_motion_sidecars:
+        sidecar_root = Path(package_result.module_path).parent / "secondary-motion"
+        sidecar_root.mkdir(parents=True, exist_ok=True)
+        written_sidecars: list[str] = []
+        for profile_id, payload in secondary_motion_sidecars:
+            digest = hashlib.sha256(payload).hexdigest()
+            target = sidecar_root / f"{profile_id}.{digest[:12]}.json"
+            if target.exists() and target.read_bytes() != payload:
+                build.blocking_issues.append(f"Secondary-motion sidecar collision at {target.name}.")
+                continue
+            target.write_bytes(payload)
+            if target.read_bytes() != payload:
+                build.blocking_issues.append(f"Secondary-motion sidecar readback failed for {target.name}.")
+                continue
+            written_sidecars.append(str(target))
+        build.metadata["secondary_motion_profile_paths"] = written_sidecars
     verification = None
     if package_result.ok and package_result.module_path and room_resrefs:
         verification = verify_dev_test_module_package(
@@ -2648,7 +2729,7 @@ def export_authored_module_project(request: AuthoredModuleExportRequest) -> Auth
     export_job = _augment_authored_manifest(package_result.manifest_path, build, package_result, verification)
     verification_warnings = list(verification.warnings) if verification is not None else []
     verification_blocking = list(verification.blocking_issues) if verification is not None else []
-    ok = package_result.ok and (verification.ok if verification is not None else True)
+    ok = package_result.ok and (verification.ok if verification is not None else True) and not build.blocking_issues
     metadata = dict(build.metadata)
     metadata["export_job"] = export_job
     return AuthoredModuleExportResult(
@@ -3636,6 +3717,7 @@ def _install_prep_export_request(request: AuthoredModuleInstallPrepRequest) -> A
             create_backups=request.export_request.create_backups,
             write_loose_resources=request.export_request.write_loose_resources,
             extra_resources=request.export_request.extra_resources,
+            secondary_motion_profiles=request.export_request.secondary_motion_profiles,
         )
     return AuthoredModuleExportRequest(
         project=request.project,

@@ -310,6 +310,7 @@ def _work_export_clean_module_obj(
     is_cancelled=None,
 ):
     from src.converters.mesh_converter import OBJExporter
+    from src.core.export.export_job import promote_staged_files
     from src.io.export_control import check_export_cancelled
     from src.io.clean_module_obj_export import prepare_clean_module_obj_model
 
@@ -347,9 +348,7 @@ def _work_export_clean_module_obj(
         check_export_cancelled(is_cancelled)
         if progress_callback:
             progress_callback("Publishing clean map files…", 95)
-        for staged_file in sorted(stage_dir.iterdir(), key=lambda item: item.name.casefold()):
-            if staged_file.is_file():
-                os.replace(staged_file, target.parent / staged_file.name)
+        promote_staged_files(stage_dir, target.parent)
         if progress_callback:
             progress_callback("Clean module OBJ export complete", 100)
         return path, summary
@@ -1145,6 +1144,84 @@ class ModelIoMixin:
             tex_cache=self._get_tex_cache_for_export(),
             on_complete=_on_complete,
             error_category="export_error",
+        )
+
+    def _export_module_obj_variant(
+        self,
+        *,
+        worker,
+        title: str,
+        filename_suffix: str,
+        progress_text: str,
+        success_text: str,
+    ):
+        module_objects = _module_group_scene_objects_for_export(
+            self.scene_manager,
+            getattr(self, "viewport", None),
+        )
+        if not module_objects:
+            QtWidgets.QMessageBox.information(
+                self,
+                title,
+                "Select any room in a loaded module layout first.",
+            )
+            return
+        module_group = (
+            (getattr(module_objects[0], "metadata", {}) or {}).get("module_group")
+            or {}
+        )
+        module_root = str(module_group.get("module_root") or "module").strip()
+        path, _selected_filter = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            title,
+            f"{module_root}_{filename_suffix}.obj",
+            "Wavefront OBJ (*.obj);;All files (*.*)",
+        )
+        if not path:
+            return
+
+        def _on_complete(result, cancelled=False):
+            if cancelled or result is None:
+                return
+            output_path, texture_sidecars = result
+            self._log(
+                f"{success_text} "
+                f"({len(module_objects)} scene objects, "
+                f"{texture_sidecars.saved}/{texture_sidecars.requested} textures written) -> "
+                f"{Path(output_path).name}",
+                "success",
+            )
+
+        self._run_io_async(
+            f"{progress_text} — {Path(path).name}",
+            worker,
+            module_objects,
+            path,
+            tex_cache=self._get_tex_cache_for_export(),
+            on_complete=_on_complete,
+            error_category="export_error",
+        )
+
+    def _export_full_module_obj(self):
+        from src.io.full_module_obj_export import export_full_module_obj
+
+        self._export_module_obj_variant(
+            worker=export_full_module_obj,
+            title="Export Full Module as One OBJ",
+            filename_suffix="full",
+            progress_text="Combining and exporting full module OBJ",
+            success_text="Exported full module as one OBJ mesh",
+        )
+
+    def _export_maya_room_module_obj(self):
+        from src.io.full_module_obj_export import export_maya_room_module_obj
+
+        self._export_module_obj_variant(
+            worker=export_maya_room_module_obj,
+            title="Export Maya-Friendly Module (Room Objects)",
+            filename_suffix="maya_rooms",
+            progress_text="Preparing Maya-friendly room-object OBJ",
+            success_text="Exported Maya-friendly module OBJ with one object per room",
         )
 
     def _export_clean_module_obj(self):

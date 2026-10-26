@@ -15,6 +15,7 @@ from src.core.characters.head_donor_snapshot import (
     validate_head_donor_snapshot,
 )
 from src.core.geometry.model_data import (
+    Animation,
     BoneWeight,
     GameVersion,
     KotorModel,
@@ -144,6 +145,40 @@ def test_native_head_snapshot_is_immutable_serializable_and_eligible() -> None:
     assert restored.structural_sha256 == snapshot.structural_sha256
 
 
+def test_secondary_tongue_skin_does_not_require_head_or_neck_influences() -> None:
+    model = _native_head_model()
+    root = model.root_node
+    head = model.find_node("head")
+    assert root is not None and head is not None
+    tongue = ModelNode(
+        name="tongue",
+        flags=int(NodeFlags.HEADER | NodeFlags.MESH | NodeFlags.SKIN),
+        index=5,
+        number=356,
+        vertices=[
+            (-0.01, -0.05, 0.02),
+            (0.01, -0.05, 0.02),
+            (0.0, -0.06, 0.03),
+        ],
+        normals=[(0.0, -1.0, 0.0)] * 3,
+        uvs=[(0.0, 0.0), (1.0, 0.0), (0.5, 1.0)],
+        faces=[(0, 1, 2)],
+        texture="PFHA04",
+        bone_map=["f_jaw_g"],
+        skin_data=[VertexSkinData([BoneWeight(0, 1.0)]) for _ in range(3)],
+    )
+    tongue.bone_node_indices = [3]
+    tongue.qbone_list = [(0.0, 0.0, 0.0, 1.0)] * 6
+    tongue.tbone_list = [(0.0, 0.0, 0.0)] * 6
+    head.qbone_list.append((0.0, 0.0, 0.0, 1.0))
+    head.tbone_list.append((0.0, 0.0, 0.0))
+    _attach(root, tongue)
+
+    report = validate_head_donor_snapshot(_snapshot(model))
+
+    assert report.eligible is True
+
+
 def test_geometry_material_and_weights_can_change_without_changing_donor_dag() -> None:
     source = _native_head_model()
     snapshot = _snapshot(source)
@@ -207,6 +242,30 @@ def test_explicit_output_resref_may_rename_only_model_and_geometry_root() -> Non
     assert {
         row.path for row in denied.blocking
     } >= {"model_name", "geometry_root_name", "nodes[0].name"}
+
+
+def test_local_animation_addition_requires_explicit_allow_list() -> None:
+    source = _native_head_model()
+    snapshot = _snapshot(source)
+    edited = deepcopy(source)
+    edited.animations = [Animation(name="talk")]
+
+    denied = compare_head_donor_contract(snapshot, edited)
+    allowed = compare_head_donor_contract(
+        snapshot,
+        edited,
+        allowed_local_animation_names=("talk",),
+    )
+
+    assert "local_animation_names" in {
+        row.path for row in denied.blocking
+    }
+    assert allowed.blocking == ()
+    assert any(
+        row.path == "local_animation_names"
+        and row.category == "animation_payload"
+        for row in allowed.allowed_payload_changes
+    )
 
 
 @pytest.mark.parametrize(

@@ -371,7 +371,15 @@ TOOL_DEFINITIONS = [
         "description": "Export a full render debug JSON for the loaded model (materials, UVs, filters, vertex space).",
         "inputSchema": {
             "type": "object",
-            "properties": {"output_path": {"type": "string"}},
+            "properties": {
+                "output_path": {"type": "string", "description": "Absolute destination .json path (required)"},
+                "overwrite": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "False creates output_path exclusively and fails if it exists",
+                },
+            },
+            "required": ["output_path"],
         },
     },
     # ── Phase D6 regression-debug tools ──────────────────────────────────────
@@ -652,8 +660,13 @@ async def handle_get_render_filter_audit(arguments: Dict[str, Any]) -> Dict[str,
 async def handle_export_render_debug_bundle(arguments: Dict[str, Any]) -> Dict[str, Any]:
     model = _get_model()
     if model is None:
-        return json_content({"error": "No model loaded"})
-    output_path = arguments.get("output_path", "render_debug_bundle.json")
+        return {**json_content({"error": "No model loaded"}), "isError": True}
+    # Previously defaulted to ./render_debug_bundle.json, i.e. the server cwd
+    # (the Ghost repository root).  An absolute .json destination is required.
+    output_path = str(arguments.get("output_path") or "")
+    if not output_path or not os.path.isabs(output_path) or not output_path.lower().endswith(".json"):
+        return {**json_content({"error": "output_path must be an absolute .json path"}), "isError": True}
+    mode = "x" if arguments.get("overwrite", True) is False else "w"
 
     bundle = {
         "model_name": getattr(model, 'name', '?'),
@@ -673,11 +686,13 @@ async def handle_export_render_debug_bundle(arguments: Dict[str, Any]) -> Dict[s
         bundle["render_filter"].append(_classify_deform_helper(node, model))
 
     try:
-        with open(output_path, 'w') as f:
+        with open(output_path, mode, encoding="utf-8") as f:
             json.dump(bundle, f, indent=2, default=str)
         return json_content({"status": "ok", "path": output_path, "node_count": len(bundle["materials"])})
+    except FileExistsError:
+        return {**json_content({"error": "Refusing to overwrite existing render debug bundle"}), "isError": True}
     except Exception as e:
-        return json_content({"error": str(e)})
+        return {**json_content({"error": f"{type(e).__name__}: {str(e)[:500]}"}), "isError": True}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

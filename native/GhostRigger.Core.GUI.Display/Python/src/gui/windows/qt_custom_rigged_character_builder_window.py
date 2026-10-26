@@ -21,6 +21,7 @@ from src.core.project.custom_rigged_character_project import (
 from src.core.rendering.renderer_settings import RendererSettings
 from src.core.rendering.viewport_navigation import DEFAULT_VIEWPORT_NAVIGATION_PROFILE
 from src.gui.qt_lib.viewports.qt_viewport import QtMainViewportWidget
+from src.gui.panels.qt_secondary_motion_editor import QtSecondaryMotionEditor
 from src.core.characters.custom_rigged_character_build_service import (
     allocate_animation_id,
     namespaced_animation_name,
@@ -41,6 +42,7 @@ WORKFLOW_PAGES = (
     ("animation_library", "Animation library"),
     ("animation_preparation", "Animation preparation"),
     ("materials_uvs", "Materials, textures, and UVs"),
+    ("secondary_motion", "Secondary Motion — Cloth & Hair"),
     ("gameplay", "KOTOR gameplay integration"),
     ("validate_build", "Validation and build"),
     ("install_test", "Install and test"),
@@ -264,6 +266,7 @@ class QtCustomRiggedCharacterBuilderWindow(QtWidgets.QMainWindow):
             "animation_library": self._animation_library_page,
             "animation_preparation": self._animation_preparation_page,
             "materials_uvs": self._materials_page,
+            "secondary_motion": self._secondary_motion_page,
             "gameplay": self._gameplay_page,
             "validate_build": self._validation_build_page,
             "install_test": self._install_test_page,
@@ -738,6 +741,20 @@ class QtCustomRiggedCharacterBuilderWindow(QtWidgets.QMainWindow):
         self.orient_for_kotor.toggled.connect(self._material_controls_changed)
         page.layout.addWidget(advanced)
         return page
+
+    def _secondary_motion_page(self) -> QtWidgets.QWidget:
+        self.secondary_motion_editor = QtSecondaryMotionEditor(
+            self,
+            target_kind="custom_character",
+            target_game=self.project.target_game,
+        )
+        self.secondary_motion_editor.set_profile(self.project.secondary_motion)
+        self.secondary_motion_editor.profileChanged.connect(self._secondary_motion_changed)
+        return self.secondary_motion_editor
+
+    def _secondary_motion_changed(self, profile: Mapping[str, Any]) -> None:
+        self.project.secondary_motion = dict(profile)
+        self._form_changed()
 
     def _gameplay_page(self) -> QtWidgets.QWidget:
         page = _Page(
@@ -1893,6 +1910,9 @@ class QtCustomRiggedCharacterBuilderWindow(QtWidgets.QMainWindow):
         self.project.creature_name = self.creature_name.text().strip()
         self.project.resource_name = self.resource_name.text().strip().lower()
         self.project.target_game = str(self.target_game.currentData() or "K2")
+        if hasattr(self, "secondary_motion_editor"):
+            self.secondary_motion_editor.set_target_game(self.project.target_game)
+            self.project.secondary_motion = self.secondary_motion_editor.profile()
         source_path = self.source_fbx.path()
         source_hash = self.project.primary_fbx.sha256
         if source_path != self.project.primary_fbx.path:
@@ -2009,6 +2029,8 @@ class QtCustomRiggedCharacterBuilderWindow(QtWidgets.QMainWindow):
             self.resource_name.setText(self.project.resource_name)
             game_index = self.target_game.findData(self.project.target_game)
             self.target_game.setCurrentIndex(max(0, game_index))
+            if hasattr(self, "secondary_motion_editor"):
+                self.secondary_motion_editor.set_profile(self.project.secondary_motion)
             self.source_fbx.set_path(opened_path(
                 self.project.primary_fbx.path, self._settings.value("last_source", "")
             ))

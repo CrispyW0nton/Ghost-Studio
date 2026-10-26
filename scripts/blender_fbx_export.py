@@ -316,8 +316,12 @@ def _build_action_from_legacy_clip(armature: bpy.types.Object, clip: dict):
         if pose_bone is None:
             continue
         pose_bone.rotation_mode = "QUATERNION"
+        # No scene.frame_set() per bone/frame: matrix_basis is bone-local and
+        # keyframe_insert(frame=...) keys the values just assigned, so the
+        # keys are identical. The old per-bone depsgraph evaluation made the
+        # 89-bone x 89-frame Day 4 clip exceed the 300 s Blender timeout on a
+        # loaded CPU.
         for frame in range(int(clip["frame_count"])):
-            bpy.context.scene.frame_set(frame + 1)
             basis = Matrix.LocRotScale(
                 Vector(clip["translations"][frame][bone_index]),
                 Quaternion(clip["rotations"][frame][bone_index]),

@@ -30,6 +30,10 @@ class LightmapPreviewCache:
                     "intensity": getattr(light, "intensity", getattr(light, "light_multiplier", 1.0)),
                     "radius": getattr(light, "radius", getattr(light, "light_radius", 5.0)),
                     "enabled": getattr(light, "enabled", getattr(light, "light_enabled", True)),
+                    # Both change the bake (ambient-only lights skip N.L; shadow flags gate occlusion), so a
+                    # toggled light must not reuse a cached preview.
+                    "ambient_only": getattr(light, "ambient_only", getattr(light, "light_ambient_only", False)),
+                    "casts_shadows": getattr(light, "casts_shadows", getattr(light, "light_shadow", True)),
                 }
                 for light in lights
             ],

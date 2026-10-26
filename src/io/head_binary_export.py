@@ -10,7 +10,7 @@ import math
 import os
 from pathlib import Path
 import struct
-from typing import Any
+from typing import Any, Iterable
 
 from src.core.characters.head_donor_snapshot import (
     HeadDonorContractDiff,
@@ -368,6 +368,7 @@ def build_verified_head_binary(
     donor_snapshot: HeadDonorSnapshot,
     game: str,
     output_resref: str,
+    allowed_local_animation_names: Iterable[str] = (),
 ) -> HeadBinaryBuild:
     """Write to memory, inspect raw headers, reload, and compare contracts."""
 
@@ -475,6 +476,11 @@ def build_verified_head_binary(
     if raw_mdx_size > len(mdx_bytes) - mdx_buffer_offset:
         blocking.append("Raw MDX buffer size is outside the companion file.")
 
+    allowed_animation_names = tuple(
+        str(value or "").strip()
+        for value in allowed_local_animation_names
+        if str(value or "").strip()
+    )
     reloaded = load_model_from_bytes(mdl_bytes, mdx_bytes)
     if reloaded is None:
         raise ValueError("Generated MDL/MDX could not be reloaded")
@@ -482,6 +488,7 @@ def build_verified_head_binary(
         donor_snapshot,
         reloaded,
         output_resref=resref,
+        allowed_local_animation_names=allowed_animation_names,
     )
     if donor_diff.blocking:
         blocking.append(
@@ -495,12 +502,21 @@ def build_verified_head_binary(
         blocking.append(
             "Reloaded rendered geometry, UV, material, or skin payload changed."
         )
+    expected_animation_names = list(donor_snapshot.local_animation_names)
+    expected_animation_keys = {
+        value.casefold() for value in expected_animation_names
+    }
+    for value in allowed_animation_names:
+        if value.casefold() not in expected_animation_keys:
+            expected_animation_names.append(value)
+            expected_animation_keys.add(value.casefold())
     if tuple(
         str(getattr(animation, "name", "") or "")
         for animation in list(getattr(reloaded, "animations", ()) or ())
-    ) != donor_snapshot.local_animation_names:
+    ) != tuple(expected_animation_names):
         blocking.append(
-            "Reloaded local animation inventory differs from the donor."
+            "Reloaded local animation inventory differs from the donor plus "
+            "the explicitly allowed overrides."
         )
 
     inspection = HeadBinaryInspection(

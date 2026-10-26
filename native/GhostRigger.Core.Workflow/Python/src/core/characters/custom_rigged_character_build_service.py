@@ -22,6 +22,7 @@ from src.core.project.custom_rigged_character_project import (
     CustomRiggedCharacterProject,
     sha256_file,
 )
+from src.core.secondary_motion.workflow import compile_secondary_motion_profile
 
 
 VANILLA_BEHAVIOR_ALIASES = {
@@ -296,6 +297,23 @@ class CustomRiggedCharacterBuildService:
             targets["mdl"].name: sha256_bytes(mdl_bytes),
             targets["mdx"].name: sha256_bytes(mdx_bytes),
         }
+        identity = dict(project.secondary_motion.get("model_identity") or {})
+        identity.update({
+            "model_resrefs": [resref],
+            "mdl_sha256": output_hashes[targets["mdl"].name],
+            "mdx_sha256": output_hashes[targets["mdx"].name],
+        })
+        project.secondary_motion["model_identity"] = identity
+        try:
+            project.secondary_motion = compile_secondary_motion_profile(
+                project.secondary_motion,
+                target_kind="custom_character",
+            )
+        except ValueError as exc:
+            return CustomRiggedBuildResult(
+                ok=False,
+                error=f"Secondary-motion validation stopped the build: {exc}",
+            )
         report = self.build_report(
             project,
             model=model,
@@ -591,6 +609,7 @@ class CustomRiggedCharacterBuildService:
                 "utc": dict(project.utc_settings),
                 "behavior": dict(project.gameplay_settings),
             },
+            "secondary_motion": dict(project.secondary_motion),
             "validation_results": [dict(value) for value in validation_results],
             "roundtrip_validation": dict(roundtrip_validation or {}),
             "automatic_repairs": list(project.automatic_repairs),

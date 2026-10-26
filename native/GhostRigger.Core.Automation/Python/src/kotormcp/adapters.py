@@ -536,8 +536,15 @@ class InstallationModelLocator(ModelLocatorPort):
         if entry is None:
             raise FileNotFoundError(f"MDL not found in installation: {resref}")
 
-        # MDX is often not available separately from the installation — return empty
-        return f"installation:{resref}.mdl", entry.data, b""
+        # A binary Odyssey model is a paired MDL + MDX resource.  The MDL owns
+        # the hierarchy and mesh headers while the companion MDX owns the
+        # vertex streams, including skin weights and bone-palette indices.  An
+        # earlier MCP adapter returned only the MDL bytes, which made skinned
+        # creatures appear structurally valid while silently dropping every
+        # per-vertex influence before FBX export.
+        mdx_entry = installation.get_resource(resref, "mdx")
+        mdx_data = mdx_entry.data if mdx_entry is not None else b""
+        return f"installation:{resref}.mdl", entry.data, mdx_data
 
 
 class CompositeModelLocator(ModelLocatorPort):

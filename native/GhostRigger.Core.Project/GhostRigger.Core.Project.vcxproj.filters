@@ -81,7 +81,7 @@
     <None Include="Python\src\core\project\resource_address.py">
       <Filter>Python\src\core\project</Filter>
     </None>
-  <None Include="Python\src\core\project\placeable_asset.py"><Filter>Python\src\core\project</Filter></None><None Include="Python\src\core\project\custom_rigged_character_project.py"><Filter>Python\src\core\project</Filter></None><None Include="Python\src\core\project\head_builder_repository.py"><Filter>Python\src\core\project</Filter></None></ItemGroup>
+  <None Include="Python\src\core\project\placeable_asset.py"><Filter>Python\src\core\project</Filter></None><None Include="Python\src\core\project\custom_rigged_character_project.py"><Filter>Python\src\core\project</Filter></None><None Include="Python\src\core\project\head_builder_repository.py"><Filter>Python\src\core\project</Filter></None><None Include="Python\src\core\project\secondary_motion_profile.py"><Filter>Python\src\core\project</Filter></None></ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GhostRiggerPythonPayload.rc" />
   </ItemGroup>

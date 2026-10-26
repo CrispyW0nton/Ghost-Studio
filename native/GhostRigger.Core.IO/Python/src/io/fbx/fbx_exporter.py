@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from src.core.geometry.model_data import KotorModel, ModelNode, NodeFlags
 from src.core.scene.kmax_scene import KMaxScene
@@ -183,11 +183,14 @@ def merge_selected_scene_objects(
     *,
     name: str = "selection",
     is_cancelled=None,
+    node_filter: Callable[[ModelNode], bool] | None = None,
 ) -> KotorModel:
     """Bake selected static scene objects into one FBX-ready mesh.
 
     Vertices are expanded per polygon corner so meshes with independent
     texture-vertex indices retain their UV seams after becoming one FBX mesh.
+    An optional node filter can replace the FBX renderability filter for
+    callers that need another exporter's mesh-selection semantics.
     """
     items = list(scene_objects or [])
     merged = ModelNode(
@@ -218,8 +221,17 @@ def merge_selected_scene_objects(
         )
         scene_scale = _vec3(getattr(transform, "scale", None), (1.0, 1.0, 1.0))
 
-        for node in iter_renderable_mesh_nodes(model):
+        nodes = (
+            model.mesh_nodes()
+            if node_filter is not None
+            else iter_renderable_mesh_nodes(model)
+        )
+        for node in nodes:
             check_export_cancelled(is_cancelled)
+            if node_filter is not None and not node_filter(node):
+                continue
+            if not getattr(node, "faces", None):
+                continue
             if int(getattr(node, "vertex_space", 0) or 0) == 2:
                 continue
             node_slots = _material_slots_for_node(node)
@@ -331,6 +343,7 @@ def _material_key(node: ModelNode) -> tuple[Any, ...]:
         tuple(float(value) for value in getattr(node, "diffuse", (0.8, 0.8, 0.8))[:3]),
         tuple(float(value) for value in getattr(node, "ambient", (0.2, 0.2, 0.2))[:3]),
         tuple(float(value) for value in getattr(node, "specular", (0.0, 0.0, 0.0))[:3]),
+        float(getattr(node, "shininess", 0.0)),
         float(getattr(node, "alpha", 1.0)),
     )
 

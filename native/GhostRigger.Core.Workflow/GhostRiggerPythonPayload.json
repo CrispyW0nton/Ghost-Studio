@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Workflow",
-    "file_count": 153,
+    "file_count": 157,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -63,7 +63,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_ANIMATION_ANIMATION_ENGINE",
             "source_path": "src/core/animation/animation_engine.py",
             "packaged_path": "Python/src/core/animation/animation_engine.py",
-            "sha256": "fe5bbbe53c44ae8211b33ab979b0e394caea102eb0a645e1a28af378e3bec94a"
+            "sha256": "2dd19a4d9dbcfe89fb1bc7e3cb593a90b70740ba42de4c433500c5db97c7cf0b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_ANIMATION_ANIMATION_LIBRARY",
@@ -363,7 +363,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_ANIMATION_DEFORMATION_VALIDATOR",
             "source_path": "src/core/characters/animation_deformation_validator.py",
             "packaged_path": "Python/src/core/characters/animation_deformation_validator.py",
-            "sha256": "8f07fdcece85ee50db242c8c03868a09b93f37c09491e8e9e227d49d7efaacf1"
+            "sha256": "ad35b44262a08ea0b1c64aa144e78529d3f7ade758a6847cae132c093570369f"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_CHARACTER_AUTOFIT_REPORT",
@@ -429,25 +429,25 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_CUSTOM_RIGGED_CHARACTER_BUILD_SERVICE",
             "source_path": "src/core/characters/custom_rigged_character_build_service.py",
             "packaged_path": "Python/src/core/characters/custom_rigged_character_build_service.py",
-            "sha256": "a7e5d9dd89d40902caee0c8547b9f094d66dbe1b816611e5025f92f41604462e"
+            "sha256": "cc0df7316cb7d4821e111200b84932165721a6fbe93bc7f3415e9ff982e8657d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_CUSTOM_RIGGED_CHARACTER_IMPORT_SERVICE",
             "source_path": "src/core/characters/custom_rigged_character_import_service.py",
             "packaged_path": "Python/src/core/characters/custom_rigged_character_import_service.py",
-            "sha256": "8df4a5d1863b06054ca2dc9ce1e87605af7c15cb5d46d931cf054046e71a215a"
+            "sha256": "9c8f0437a53bb80ea5dac6d88127f1e742617cacbad187516a7831747ba29fd5"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_CUSTOM_RIGGED_CHARACTER_PACKAGING_SERVICE",
             "source_path": "src/core/characters/custom_rigged_character_packaging_service.py",
             "packaged_path": "Python/src/core/characters/custom_rigged_character_packaging_service.py",
-            "sha256": "4630c1495f91f367f686b0e79393ac55af927aef03d04021bfffb5552ffa105a"
+            "sha256": "b10432f5d83e32abf60958b21ed52257d41dbbd91614fe3533ac733e27fab0ad"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_FACIAL_RIG_QA",
             "source_path": "src/core/characters/facial_rig_qa.py",
             "packaged_path": "Python/src/core/characters/facial_rig_qa.py",
-            "sha256": "956a4533a7a4050c5d475cd744d8fe230fbc0e0e227edd13cf8d68f47dbacb5e"
+            "sha256": "b1f48a037b65fca77d7a33da05ed6a24d0b377013d9a3215f70f80f8a8ec2249"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_HEAD_ART_ANATOMY",
@@ -483,13 +483,13 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_HEAD_DONOR_SNAPSHOT",
             "source_path": "src/core/characters/head_donor_snapshot.py",
             "packaged_path": "Python/src/core/characters/head_donor_snapshot.py",
-            "sha256": "f18920e7a92bb958b235330fc5a79e38cf464e63a6702902a39b2af3ecc10b94"
+            "sha256": "48bd0752463d223a15a24d8e4244c003cf383f1283b1538e792de6a5c25455f5"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_HEAD_FACIAL_TRANSPLANT",
             "source_path": "src/core/characters/head_facial_transplant.py",
             "packaged_path": "Python/src/core/characters/head_facial_transplant.py",
-            "sha256": "196adc8051e6a65cd8d71b85d8c16bc02345c0b88f58b7fb99e8e5acd317cedc"
+            "sha256": "98cb5438db24c352581604fe68299098b8d32ef017e214e4bf20e5887800f9a0"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CHARACTERS_HEAD_GEOMETRY_TRANSPLANT",
@@ -597,7 +597,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_RETARGETING_FBX_EXPORTER",
             "source_path": "src/core/retargeting/fbx_exporter.py",
             "packaged_path": "Python/src/core/retargeting/fbx_exporter.py",
-            "sha256": "ce8005d7161e9b1fff83e957a94cbed80d90ae06ef4959f5b5a1dbb18b3136fc"
+            "sha256": "7070fc848e2647660c73b0434f39773c36228b04212593663c421a38ae00e033"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RETARGETING_FBX_IMPORTER",
@@ -747,7 +747,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_RETARGETING_SAMPLER",
             "source_path": "src/core/retargeting/sampler.py",
             "packaged_path": "Python/src/core/retargeting/sampler.py",
-            "sha256": "7074ff846d12a7243d9b63f97c01f50d6c249eafd1903ec77de16a7d9cc570cb"
+            "sha256": "8a71031624b97745fb2a561c08825429acf5acb49fc9c530e4f21520d44996fd"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RETARGETING_SKELETON_ALIGNER",
@@ -843,7 +843,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_PACKAGING",
             "source_path": "src/core/scripting/packaging.py",
             "packaged_path": "Python/src/core/scripting/packaging.py",
-            "sha256": "22fcd363ee7f2f15b1658316f1cff46fd414bbbf47a83c6202adcc53e682ace3"
+            "sha256": "637392e594d8c9f3df18474d605c6bb8e473d66be109a055db6604dc7b7736c1"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_PROJECT",
@@ -868,6 +868,18 @@
             "source_path": "src/core/scripting/studio.py",
             "packaged_path": "Python/src/core/scripting/studio.py",
             "sha256": "61bb89f7ca04ef1cc9cf88d171e862694d469667417ed16c81e89b0390d21e27"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SECONDARY_MOTION_INIT",
+            "source_path": "src/core/secondary_motion/__init__.py",
+            "packaged_path": "Python/src/core/secondary_motion/__init__.py",
+            "sha256": "5419e87e8448ae3e30fde92a3dcb8cd643428a80ba09ae7a6fa3c8404950c0b1"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SECONDARY_MOTION_WORKFLOW",
+            "source_path": "src/core/secondary_motion/workflow.py",
+            "packaged_path": "Python/src/core/secondary_motion/workflow.py",
+            "sha256": "4e9f8bd4159b609a2a2db7d39a6096df51345071f672c73084f81db141e49887"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_INIT",
@@ -915,13 +927,25 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_PLACEABLE_BUILDER_SERVICE",
             "source_path": "src/core/workflow/placeable_builder_service.py",
             "packaged_path": "Python/src/core/workflow/placeable_builder_service.py",
-            "sha256": "5372075e44ff9eeb04a880b9a7db0b6eb2452123f4997a97933e2f49fc3daa35"
+            "sha256": "52808189bc61925eeb9776f77acd71678afdbf9d3c8e6cd03255c2b87b62dda6"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_PLCAA_MANUAL_PROOF_KIT",
             "source_path": "src/core/workflow/plcaa_manual_proof_kit.py",
             "packaged_path": "Python/src/core/workflow/plcaa_manual_proof_kit.py",
             "sha256": "4ac7f128be2d7b7b429fde687c8c96a97ad7bdbeaba786eb6801f6e3738db5b2"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_UNREAL_MAP_IMPORT",
+            "source_path": "src/core/workflow/unreal_map_import.py",
+            "packaged_path": "Python/src/core/workflow/unreal_map_import.py",
+            "sha256": "e5334b3036d7c50bef9ae674ef0acd8f2131c4d249d797ba61884e74343b29b8"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_UNREAL_PIPELINE_JOBS",
+            "source_path": "src/core/workflow/unreal_pipeline_jobs.py",
+            "packaged_path": "Python/src/core/workflow/unreal_pipeline_jobs.py",
+            "sha256": "b8025104ee91e6d5297d6a4f14ef230115dde57ec27486b4d465bcd01eb0cfb4"
         }
     ]
 }

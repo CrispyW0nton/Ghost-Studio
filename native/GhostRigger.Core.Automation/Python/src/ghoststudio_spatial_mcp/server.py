@@ -1342,7 +1342,10 @@ class GhostStudioSpatialMcpServer:
             )
         ):
             return self._error(None, -32600, "Invalid Request")
-        params = message.get("params", {})
+        # A null or omitted params object means "no params" (clients such as the Codex desktop send either form).
+        params = message.get("params")
+        if params is None:
+            params = {}
         if method == "initialize":
             if not isinstance(params, dict):
                 return self._error(request_id, -32602, "Invalid params")
@@ -1370,7 +1373,9 @@ class GhostStudioSpatialMcpServer:
         if method == "ping":
             return self._result(request_id, {})
         if method == "tools/list":
-            if not isinstance(params, dict) or set(params) - {"cursor"}:
+            # Unknown request fields are ignored (MCP: receivers ignore fields they do not understand). Rejecting
+            # them failed the Codex desktop's startup handshake with -32602 on about half of all launches (Oct 2).
+            if not isinstance(params, dict) or ("_meta" in params and not isinstance(params["_meta"], dict)):
                 return self._error(request_id, -32602, "Invalid params")
             if params.get("cursor") not in (None, ""):
                 return self._error(request_id, -32602, "Invalid cursor")
@@ -1383,7 +1388,10 @@ class GhostStudioSpatialMcpServer:
         return self._error(request_id, -32601, "Method not found")
 
     def _call_tool(self, request_id: Any, params: Any) -> dict[str, Any]:
-        if not isinstance(params, dict) or set(params) - {"name", "arguments"}:
+        # MCP request metadata belongs to the transport, not the native tool's
+        # arguments or authority. Desktop clients may attach it to any request.
+        # Unknown top-level request fields (e.g. task metadata) are ignored; only name/arguments are used.
+        if not isinstance(params, dict) or ("_meta" in params and not isinstance(params["_meta"], dict)):
             return self._error(request_id, -32602, "Invalid params")
         name = params.get("name")
         if not isinstance(name, str) or name not in TOOL_ROUTES:

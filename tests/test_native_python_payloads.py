@@ -155,7 +155,20 @@ def test_python_payload_manifest_covers_every_python_source_and_dll_project() ->
     # the two-file ARKit input adapter to the Core.Workflow payload.
     # Clean full-map OBJ export adds the package-local geometry filter plus
     # shared cancellation and texture-sidecar result contracts to Core.IO.
-    assert len(payload_files) == 1424
+    # Canonical BAS character presets add one Core.Tools owner that resolves
+    # installed UTC/UTI/2DA records into body, head, texture, and equipment
+    # layer references without copying source game data.
+    # The concurrent Core.IO PBR material export owner contributes one further
+    # payload row discovered by the all-project Debug payload generation.
+    # Secondary-motion authoring adds seven package-owned payload rows: one
+    # Project profile, two IO/profile files, two Workflow/preview files, one
+    # Validation gate, and the shared GUI Display editor. Regeneration also
+    # manifests the already-documented full-module OBJ export owner.
+    # Whole-level export adds IO assembly, Math instance transforms and its GUI
+    # dialog. Unreal level import adds IO bundle, Math space and Scene bridge.
+    # Native Unreal import adds three Scene, three IO, one Math, one Workflow
+    # and one GUI Display payload; the editor plugin runs inside Unreal.
+    assert len(payload_files) == 1096
     assert set(source_files).issubset(set(payload_files))
     assert payload_projects == dll_projects
 

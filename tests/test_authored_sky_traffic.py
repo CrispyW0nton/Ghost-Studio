@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import math
 import sys
@@ -192,6 +193,45 @@ def test_sky_traffic_sampling_is_deterministic_for_duration_speed_and_facing() -
     assert sample_sky_traffic(replace(traffic, facing_mode="preserve_model"), 5.0).facing_direction is None
 
 
+def test_sky_traffic_fades_hides_and_resets_without_a_visible_teleport() -> None:
+    _configure_native_python_roots()
+    from src.core.modules.authored_sky_traffic import (
+        authored_sky_traffic_from_kmap,
+        authored_sky_traffic_to_kmap,
+        sample_sky_traffic,
+        sky_traffic_effective_period,
+        validate_authored_sky_traffic,
+    )
+
+    traffic = _traffic(
+        duration_seconds=20.0,
+        fade_in_seconds=2.0,
+        fade_out_seconds=5.0,
+        hidden_reset_seconds=10.0,
+    )
+    payload = authored_sky_traffic_to_kmap(traffic)
+    assert payload["visibility"] == {
+        "fade_in_seconds": 2.0,
+        "fade_out_seconds": 5.0,
+        "hidden_reset_seconds": 10.0,
+    }
+    assert authored_sky_traffic_from_kmap(payload) == traffic
+    assert sky_traffic_effective_period(traffic) == 30.0
+    assert sample_sky_traffic(traffic, 0.0).visibility_alpha == 0.0
+    assert sample_sky_traffic(traffic, 1.0).visibility_alpha == 0.5
+    assert sample_sky_traffic(traffic, 10.0).visibility_alpha == 1.0
+    assert sample_sky_traffic(traffic, 17.5).visibility_alpha == 0.5
+    hidden = sample_sky_traffic(traffic, 25.0)
+    assert hidden.hidden_for_reset is True
+    assert hidden.visibility_alpha == 0.0
+    restarted = sample_sky_traffic(traffic, 31.0)
+    assert restarted.hidden_for_reset is False
+    assert restarted.visibility_alpha == 0.5
+    assert "SKY_TRAFFIC_LOOP_RESET" not in {
+        issue.code for issue in validate_authored_sky_traffic(traffic).issues
+    }
+
+
 def test_sky_traffic_preview_path_and_arrows_are_repeatable_and_renderer_neutral() -> None:
     _configure_native_python_roots()
     from src.core.modules.authored_sky_traffic import build_sky_traffic_preview
@@ -353,8 +393,17 @@ def test_sky_traffic_source_and_payload_mirrors_are_exact() -> None:
     )
     assert len({path.read_bytes() for path in paths}) == 1
 
-    _configure_native_python_roots()
-    import src.core.modules.authored_sky_traffic as module
+    spec = importlib.util.spec_from_file_location(
+        "ghostrigger_scene_payload_authored_sky_traffic",
+        paths[1],
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.modules.pop(spec.name, None)
 
     assert "GhostRigger.Core.Scene" in str(Path(module.__file__).resolve())
     source = paths[0].read_text(encoding="utf-8")

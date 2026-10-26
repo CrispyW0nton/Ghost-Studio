@@ -8,10 +8,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 BAS_MODEL_RECIPE_SCHEMA = "ghostrigger.bas.model"
 BAS_MODEL_RECIPE_VERSION = 1
-BAS_SLOT_ORDER = ("body", "head", "mask", "goggles", "left_hand", "right_hand", "left_weapon", "belt", "right_weapon")
+BAS_SLOT_ORDER = (
+    "body",
+    "head",
+    "mask",
+    "goggles",
+    "left_hand",
+    "right_hand",
+    "left_weapon",
+    "belt",
+    "right_weapon",
+)
 BAS_SOCKET_BY_SLOT = {
     "head": "headhook",
     "mask": "MaskHook",
@@ -49,7 +58,9 @@ def safe_bas_recipe_stem(*parts: object) -> str:
 def bas_model_identity(model: Any, *, fallback: str = "") -> dict[str, str]:
     name = str(getattr(model, "name", "") or fallback or "").strip()
     resref = str(getattr(model, "_gr_source_resref", "") or name or fallback or "").strip()
-    game = str(getattr(model, "_gr_source_game", "") or getattr(model, "game_version", "") or "").strip()
+    game = str(
+        getattr(model, "_gr_source_game", "") or getattr(model, "game_version", "") or ""
+    ).strip()
     if "." in game:
         game = game.rsplit(".", 1)[-1]
     return {
@@ -119,12 +130,21 @@ def build_bas_model_recipe(
         )
 
     clean_build_name = str(build_name or "").strip()
-    attachment_parts = [layer["resref"] for layer in layers if layer["state"] == "attached" and layer["resref"]]
-    recipe_stem = safe_bas_recipe_stem(clean_build_name) if clean_build_name else safe_bas_recipe_stem(game_tag, body["resref"], *attachment_parts)
-    return {
+    attachment_parts = [
+        layer["resref"] for layer in layers if layer["state"] == "attached" and layer["resref"]
+    ]
+    recipe_stem = (
+        safe_bas_recipe_stem(clean_build_name)
+        if clean_build_name
+        else safe_bas_recipe_stem(game_tag, body["resref"], *attachment_parts)
+    )
+    character_preset = getattr(body_model, "_gr_bas_character_preset", None)
+    recipe = {
         "schema": BAS_MODEL_RECIPE_SCHEMA,
         "version": BAS_MODEL_RECIPE_VERSION,
-        "saved_at_utc": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "saved_at_utc": datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
         "game": game_tag,
         "recipe_id": recipe_stem,
         "display_name": clean_build_name or f"{body['name']} BAS",
@@ -145,18 +165,53 @@ def build_bas_model_recipe(
             "notes": "BAS JSON stores a lightweight recipe. Source MDL/MDX assets stay referenced by game/resref.",
         },
     }
+    if isinstance(character_preset, dict) and character_preset.get("utc_resref"):
+        recipe["character_preset"] = {
+            "game": str(character_preset.get("game") or game_tag),
+            "utc_resref": str(character_preset.get("utc_resref") or ""),
+            "display_name": str(character_preset.get("display_name") or ""),
+            "body_game": str(character_preset.get("body_game") or body.get("game") or game_tag),
+            "head_game": str(character_preset.get("head_game") or ""),
+            "slot_games": {
+                str(slot): str(game)
+                for slot, game in dict(character_preset.get("slot_games") or {}).items()
+                if str(game or "").upper() in {"K1", "K2"}
+            },
+            "slot_models": {
+                str(slot): str(resref)
+                for slot, resref in dict(character_preset.get("slot_models") or {}).items()
+                if str(resref or "").strip()
+            },
+            "nonvisual_slots": {
+                str(slot): str(resref)
+                for slot, resref in dict(character_preset.get("nonvisual_slots") or {}).items()
+                if str(resref or "").strip()
+            },
+            "body_texture": str(character_preset.get("body_texture") or ""),
+            "head_texture": str(character_preset.get("head_texture") or ""),
+            "equipment_items": {
+                str(slot): str(resref)
+                for slot, resref in dict(character_preset.get("equipment_items") or {}).items()
+                if str(resref or "").strip()
+            },
+        }
+    return recipe
 
 
 def save_bas_model_recipe(recipe: dict[str, Any], directory: Path | None = None) -> Path:
     target_dir = directory or default_bas_models_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
-    stem = safe_bas_recipe_stem(recipe.get("recipe_id") or recipe.get("display_name") or "bas_model")
+    stem = safe_bas_recipe_stem(
+        recipe.get("recipe_id") or recipe.get("display_name") or "bas_model"
+    )
     path = target_dir / f"{stem}.json"
     path.write_text(json.dumps(recipe, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
 
 
-def normalize_bas_layer_transform(transform: dict[str, Any] | None = None) -> dict[str, list[float]]:
+def normalize_bas_layer_transform(
+    transform: dict[str, Any] | None = None,
+) -> dict[str, list[float]]:
     transform = transform or {}
 
     def values(key: str, fallback: tuple[float, ...]) -> list[float]:

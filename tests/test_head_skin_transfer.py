@@ -141,6 +141,30 @@ def test_invalid_palette_rows_or_donor_geometry_are_rejected():
         )
 
 
+def test_retail_seventeen_slot_head_palette_is_supported():
+    result = transfer_head_skin_weights(
+        donor_vertices=DONOR_VERTICES,
+        donor_faces=DONOR_FACES,
+        donor_weight_rows=DONOR_ROWS,
+        target_vertices=((0.25, 0.25, 0.0),),
+        palette_size=17,
+        rigid_fallback_slot=16,
+        maximum_surface_distance=0.1,
+    )
+    assert result.report.accepted
+
+    with pytest.raises(HeadSkinTransferError, match="1-32"):
+        transfer_head_skin_weights(
+            donor_vertices=DONOR_VERTICES,
+            donor_faces=DONOR_FACES,
+            donor_weight_rows=DONOR_ROWS,
+            target_vertices=((0.25, 0.25, 0.0),),
+            palette_size=33,
+            rigid_fallback_slot=32,
+            maximum_surface_distance=0.1,
+        )
+
+
 def test_transfer_is_deterministic_for_equal_distance_triangle_ties():
     kwargs = dict(
         donor_vertices=(

@@ -27,7 +27,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_ASSETS_RESOURCE_MANAGER",
             "source_path": "src/core/assets/resource_manager.py",
             "packaged_path": "Python/src/core/assets/resource_manager.py",
-            "sha256": "f315d584449cccb77df10db46d5ec3e2d09a17ecf2c02a260b3c26f034fd3091"
+            "sha256": "26ad885664ab592be5d7597f0319b35ef789a6818c5a0f63432e0e383750fca9"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_GAME_INIT",
@@ -57,7 +57,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_GAME_KOTOR_LOADER",
             "source_path": "src/core/game/kotor_loader.py",
             "packaged_path": "Python/src/core/game/kotor_loader.py",
-            "sha256": "3f2c69f8913165df5cf9b8de7576ef62a8ec05c65d21c1b2e7493b86b54c0638"
+            "sha256": "7a418d482c1e33f50c9edbe578dd0a7fce9925cda27dd90a09413fbf19317f78"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_GAME_PYKOTOR_BRIDGE",

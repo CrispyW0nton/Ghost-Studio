@@ -61,6 +61,9 @@ class DeformationSampleReport:
     collapsed_edge_fraction: float = 0.0
     max_displacement: float = 0.0
     displacement_bound: float = 0.0
+    bind_floor_z: float = 0.0
+    minimum_deformed_z: float = 0.0
+    floor_penetration: float = 0.0
     non_finite_count: int = 0
     missing_bones: List[str] = field(default_factory=list)
     failures: List[str] = field(default_factory=list)
@@ -80,6 +83,9 @@ class DeformationSampleReport:
             "collapsed_edge_fraction": self.collapsed_edge_fraction,
             "max_displacement": self.max_displacement,
             "displacement_bound": self.displacement_bound,
+            "bind_floor_z": self.bind_floor_z,
+            "minimum_deformed_z": self.minimum_deformed_z,
+            "floor_penetration": self.floor_penetration,
             "non_finite_count": self.non_finite_count,
             "missing_bones": list(self.missing_bones),
             "failures": list(self.failures),
@@ -410,6 +416,17 @@ def validate_animation_deformation(
             )),
         })
 
+    # The rendered skin, not a foot-bone pivot, defines contact with the floor.
+    # Retargeted clips can keep every foot node above its bind pivot while still
+    # pulling the weighted body through the stage.  Use the lowest bind vertex
+    # as the immutable floor reference and compare every sampled deformed mesh
+    # against that exact plane.
+    bind_floor_z = min(
+        float(data["verts"][:, 2].min())
+        for data in mesh_data
+        if data["verts"].size
+    )
+
     for block in anim_blocks:
         anim_name = str(getattr(block, "name", "") or "?")
         length = float(getattr(block, "length", 0.0) or 0.0)
@@ -433,7 +450,12 @@ def validate_animation_deformation(
                     anim_name, exc,
                 )
         for t in times:
-            sample = DeformationSampleReport(animation=anim_name, time=float(t))
+            sample = DeformationSampleReport(
+                animation=anim_name,
+                time=float(t),
+                bind_floor_z=bind_floor_z,
+                minimum_deformed_z=float("inf"),
+            )
             try:
                 pose = evaluate_aurora_animation_pose(model, block, float(t))
             except Exception as exc:
@@ -486,6 +508,11 @@ def validate_animation_deformation(
                 non_finite = int((~finite_mask).sum())
                 sample.non_finite_count += non_finite
                 safe_deformed = np.where(finite_mask[:, None], deformed, verts)
+                if safe_deformed.size:
+                    sample.minimum_deformed_z = min(
+                        sample.minimum_deformed_z,
+                        float(safe_deformed[:, 2].min()),
+                    )
 
                 displacement = np.linalg.norm(safe_deformed - verts, axis=1)
                 max_disp = float(displacement.max()) if displacement.size else 0.0
@@ -520,6 +547,13 @@ def validate_animation_deformation(
                     sample.collapsed_edge_fraction = max(
                         sample.collapsed_edge_fraction, collapsed,
                     )
+
+            if not np.isfinite(sample.minimum_deformed_z):
+                sample.minimum_deformed_z = bind_floor_z
+            sample.floor_penetration = max(
+                0.0,
+                bind_floor_z - sample.minimum_deformed_z,
+            )
 
             if sample.non_finite_count:
                 sample.failures.append("non_finite_vertices")

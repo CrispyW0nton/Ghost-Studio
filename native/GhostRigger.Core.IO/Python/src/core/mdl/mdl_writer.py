@@ -2539,7 +2539,11 @@ class MDLBinaryWriter:
             allow_source_subset=has_source_tree,
         )
         anim_root_name = anim.anim_root or (anim_nodes[0].name if anim_nodes else '')
-        node_count = len(self._nodes) if has_source_tree and self._nodes else len(anim_nodes)
+        # The animation header declares the serialized animation-tree span,
+        # not the target geometry's node count.  A target-native sparse tree
+        # intentionally omits unrelated branches; declaring the full geometry
+        # span makes UpdateAnimFootprint walk past the actual child traversal.
+        node_count = len(anim_nodes)
 
         fp1 = _K2_ANIM_FP1 if self._is_k2 else _K1_ANIM_FP1
         fp2 = _K2_ANIM_FP2 if self._is_k2 else _K1_ANIM_FP2

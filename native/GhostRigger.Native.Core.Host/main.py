@@ -351,6 +351,7 @@ def _install_atexit_flush() -> None:
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="GhostStudio native host")
     parser.add_argument("--gui", default="qt")
+    parser.add_argument("--unreal-snapshot", help="Open the native Unreal import workflow.")
     parser.add_argument("model", nargs="?", help="Optional startup model path.")
     parser.add_argument("--tga", action="append", default=[])
     parser.add_argument("--texture", dest="tga", action="append")

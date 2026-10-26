@@ -24,5 +24,5 @@ del /Q "$(TargetDir)$(TargetName).exp" 2&gt;nul</Command></PostBuildEvent></Item
     <Exec Command="&quot;$(GhostRiggerPythonPayloadPython)&quot; &quot;$(ProjectDir)GeneratePythonPayload.py&quot;" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" /><ImportGroup Label="ExtensionTargets" />
-  <ItemGroup Label="PythonPayload"><ResourceCompile Include="GhostRiggerPythonPayload.rc" /><None Include="GhostRiggerPythonPayload.json" /><None Include="GeneratePythonPayload.py" /><None Include="Python\src\unreal\__init__.py" /><None Include="Python\src\unreal\animation_retargeting.py" /><None Include="Python\src\unreal\quinn.py" /></ItemGroup>
+  <ItemGroup Label="PythonPayload"><ResourceCompile Include="GhostRiggerPythonPayload.rc" /><None Include="GhostRiggerPythonPayload.json" /><None Include="GeneratePythonPayload.py" /><None Include="Python\src\unreal\__init__.py" /><None Include="Python\src\unreal\animation_retargeting.py" /><None Include="Python\src\unreal\quinn.py" /><None Include="Python\src\adapters\kotor_retail_pipeline.py" /></ItemGroup>
 </Project>

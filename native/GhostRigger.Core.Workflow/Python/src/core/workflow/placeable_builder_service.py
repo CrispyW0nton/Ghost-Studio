@@ -18,6 +18,8 @@ from src.core.placeables.placeable_utp_io import (
 )
 from src.core.project.placeable_asset import PlaceableAsset, load_placeable_asset
 from src.core.project.resource_address import ResourceAddress
+from src.core.secondary_motion.profile_io import serialize_secondary_motion_profile
+from src.core.secondary_motion.workflow import compile_secondary_motion_profile
 from src.core.resources.game_resource_provider import GameResourceProvider, GameResourceQuery
 from src.core.resources.placeable_library import discover_placeable_library_rows
 from src.core.workflow.particle_placeable_export import build_particle_placeable
@@ -29,6 +31,7 @@ class PlaceableReferencedResourcesResult:
     issues: tuple[PlaceableBundleIssue, ...]
     selected_template_resrefs: tuple[str, ...]
     missing_template_resrefs: tuple[str, ...]
+    secondary_motion_profiles: tuple[tuple[str, bytes], ...] = ()
     engine_ready: bool = False
 
     @property
@@ -84,6 +87,7 @@ def referenced_placeable_resource_report(
     missing: list[str] = []
     externally_resolved_dependencies: set[tuple[str, str]] = set()
     particle_appearance_changed = False
+    secondary_motion_profiles: dict[str, bytes] = {}
 
     def add(resource: PlaceableBundleResource) -> None:
         prior = collected.get(resource.key)
@@ -92,6 +96,17 @@ def referenced_placeable_resource_report(
                 f"Resource collision for {resource.key[0]}.{resource.key[1].lower()} while resolving Placeable Builder assets."
             )
         collected.setdefault(resource.key, resource)
+
+    def add_secondary_motion(asset: PlaceableAsset) -> None:
+        compiled = compile_secondary_motion_profile(asset.secondary_motion, target_kind="placeable")
+        profile_id = str(compiled.get("profile_id") or "secondary_motion")
+        payload = serialize_secondary_motion_profile(compiled)
+        prior = secondary_motion_profiles.get(profile_id)
+        if prior is not None and prior != payload:
+            raise PlaceableResourceCollisionError(
+                f"Secondary-motion profile collision for {profile_id!r} while resolving Placeable Builder assets."
+            )
+        secondary_motion_profiles.setdefault(profile_id, payload)
 
     for resref in wanted:
         row = by_resref.get(resref)
@@ -103,6 +118,7 @@ def referenced_placeable_resource_report(
         if row.get("source") == "placeable_builder" and path:
             try:
                 asset = load_placeable_asset(path)
+                add_secondary_motion(asset)
                 base_bytes = base_resolver(asset) if base_resolver is not None else None
                 if base_bytes is None and provider is not None and asset.base_template is not None:
                     base_bytes = provider.read_bytes(asset.base_template)
@@ -209,6 +225,7 @@ def referenced_placeable_resource_report(
         issues=tuple(issues),
         selected_template_resrefs=tuple(selected),
         missing_template_resrefs=tuple(missing),
+        secondary_motion_profiles=tuple(sorted(secondary_motion_profiles.items())),
         engine_ready=False,
     )
 
@@ -264,6 +281,7 @@ def referenced_interactive_resource_report(
     selected: list[str] = []
     missing: list[str] = []
     scripted_graph_partial = False
+    secondary_motion_profiles: dict[str, bytes] = {}
 
     def add_resource(resref: str, restype: str, data: bytes) -> None:
         key = (str(resref).lower(), str(restype).upper().lstrip("."))
@@ -287,6 +305,13 @@ def referenced_interactive_resource_report(
             add_resource(resref, restype, data)
         selected.extend(authored.selected_template_resrefs)
         missing.extend(authored.missing_template_resrefs)
+        for profile_id, payload in authored.secondary_motion_profiles:
+            prior = secondary_motion_profiles.get(profile_id)
+            if prior is not None and prior != payload:
+                raise PlaceableResourceCollisionError(
+                    f"Secondary-motion profile collision for {profile_id!r} while resolving interactive templates."
+                )
+            secondary_motion_profiles.setdefault(profile_id, payload)
 
     def row_address(row: dict[str, Any]) -> ResourceAddress | None:
         metadata = dict(row.get("metadata") or {})
@@ -407,6 +432,7 @@ def referenced_interactive_resource_report(
         issues=tuple(issues),
         selected_template_resrefs=tuple(dict.fromkeys(selected)),
         missing_template_resrefs=tuple(dict.fromkeys(missing)),
+        secondary_motion_profiles=tuple(sorted(secondary_motion_profiles.items())),
         engine_ready=False,
     )
 

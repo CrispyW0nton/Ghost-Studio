@@ -30,6 +30,7 @@ Commands implemented (23 total):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -37,6 +38,7 @@ import os
 import struct
 import sys
 import time
+import uuid
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -50,6 +52,24 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from kotormcp.utils import json_content
+
+import re as _re
+
+_MAX_BIF_RESOURCE = 256 * 1024 * 1024
+_MIN_CAPTURE = 16
+_MAX_CAPTURE = 4096
+_SAFE_SET_NAME = _re.compile(r"[A-Za-z0-9_-]{1,64}")
+_UNSAFE_FILE_CHARS = _re.compile(r"[^A-Za-z0-9_-]")
+_SAFE_RESREF = _re.compile(r"[A-Za-z0-9_-]{1,16}")
+_MAX_ANIMATION_NAME = 64
+_MAX_PATH_TEXT = 1024
+
+
+def _bytes_identity(data: Optional[bytes]) -> Optional[Dict[str, Any]]:
+    """SHA-256 and size, the same shape as ghostrigger_source_identity."""
+    if data is None:
+        return None
+    return {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,7 +104,7 @@ class _DebugSession:
         self.anim_base_pose = None
         self.last_image = None
         self.camera_preset: str = "front"
-        self.camera_azimuth: float = 0.0
+        self.camera_azimuth: float = 90.0
         self.camera_elevation: float = 15.0
         self.started: bool = False
         self._start_time: float = 0.0
@@ -95,10 +115,21 @@ class _DebugSession:
         # models to render without textures (flat white/grey surfaces).
         self._resource_manager = None
         self._model_textures: dict = {}  # cached: name→PIL Image
+        # K1 or K2, detected from the executable in the game directory.
+        self.game_tag: str = "K1"
+        # Session identity (new UUID per launch) and the loaded model's exact
+        # source bytes; state_revision() binds both to the observable state.
+        self.session_id: str = ""
+        self.model_source: Optional[dict] = None
 
     def launch(self):
+        # Relaunching replaces the session instead of leaking a second
+        # GpuRenderer beside the first.
+        if self.started or self.renderer is not None:
+            self.close()
         self.started = True
         self._start_time = time.time()
+        self.session_id = str(uuid.uuid4())
         # Lazy-init renderer
         try:
             from src.adapters.rendering.moderngl_legacy_bridge import GpuRenderer
@@ -121,18 +152,66 @@ class _DebugSession:
             return 0.0
         return time.time() - self._start_time
 
+    def state_revision(self) -> str:
+        """SHA-256 over everything that decides a capture: session, install,
+        model source bytes, animation, time and camera. Identical state gives
+        the identical revision (a validation set that restores its state keeps
+        it); Kaigen compares it before every mutation and capture."""
+        state = {
+            "session_id": self.session_id,
+            "started": self.started,
+            "game_dir": self.game_dir,
+            "game_tag": self.game_tag,
+            "model_resref": self.model_resref if self.model is not None else "",
+            "model_source": self.model_source if self.model is not None else None,
+            "animation": self.current_anim_name,
+            "time": repr(float(self.current_anim_time)),
+            "camera": [self.camera_preset, self.camera_azimuth, self.camera_elevation],
+        }
+        return hashlib.sha256(
+            json.dumps(state, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+
+    def status(self) -> dict:
+        return {
+            "started": self.started,
+            "session_id": self.session_id or None,
+            "revision": self.state_revision() if self.started else None,
+            "uptime_s": round(self.uptime_s, 1),
+            "game_dir": self.game_dir,
+            "game_tag": self.game_tag if self.game_dir else None,
+            "game_verified": self.game_verified,
+            "model_loaded": self.model is not None,
+            "model_resref": self.model_resref,
+            "model_source": self.model_source if self.model is not None else None,
+            "current_animation": self.current_anim_name,
+            "current_time": self.current_anim_time,
+            "camera_preset": self.camera_preset,
+            "renderer_available": self.renderer is not None,
+            "skin_uploader_active": self.skin_uploader is not None,
+        }
+
     # ── Game library ─────────────────────────────────────────────────────────
+
+    def detect_game_tag(self) -> str:
+        """Return 'K2' when the directory holds swkotor2.exe, else 'K1'."""
+        if self.game_dir and os.path.isfile(os.path.join(self.game_dir, "swkotor2.exe")):
+            return "K2"
+        return "K1"
 
     def set_game_path(self, path: str) -> dict:
         self.game_dir = path
         self.game_verified = False
         self._key_data = None
         self._model_textures = {}  # clear texture cache on path change
+        self._resource_manager = None
+        self.game_tag = self.detect_game_tag()
         # FIX-TEXLOAD-D5: Initialize ResourceManager for texture pipeline.
+        # TSL installs are indexed as K2 (previously always set_k1_dir).
         try:
             from src.core.assets.resource_manager import ResourceManager
             rm = ResourceManager()
-            ok = rm.set_k1_dir(path)
+            ok = rm.set_k2_dir(path) if self.game_tag == "K2" else rm.set_k1_dir(path)
             if ok:
                 self._resource_manager = rm
                 log.info(f"DebugSession: ResourceManager initialized for {path}")
@@ -221,16 +300,21 @@ class _DebugSession:
                 if bif_idx < len(kd["bif_files"]):
                     bif_path = os.path.join(self.game_dir, kd["bif_files"][bif_idx])
                     if os.path.exists(bif_path):
+                        bif_size = os.path.getsize(bif_path)
                         with open(bif_path, "rb") as bf:
                             bf.read(8)
                             bf.read(4)
                             bf.read(4)
                             var_table_offset = struct.unpack("<I", bf.read(4))[0]
+                            if var_table_offset + (res_idx + 1) * 16 > bif_size:
+                                raise ValueError(f"BIF resource table out of range: {bif_path}")
                             bf.seek(var_table_offset + res_idx * 16)
                             bf.read(4)
                             data_offset = struct.unpack("<I", bf.read(4))[0]
                             data_size = struct.unpack("<I", bf.read(4))[0]
                             bf.read(4)
+                            if data_size > _MAX_BIF_RESOURCE or data_offset + data_size > bif_size:
+                                raise ValueError(f"BIF resource size/offset out of range: {bif_path}")
                             bf.seek(data_offset)
                             raw = bf.read(data_size)
                             ext = "mdl" if rtype == 2002 else "mdx"
@@ -239,21 +323,52 @@ class _DebugSession:
 
     # ── Model loading ────────────────────────────────────────────────────────
 
+    def resolve_model(self, resref: str) -> Tuple[str, bytes, bytes]:
+        """Resolve MDL+MDX through the locator the export and model tools use
+        (its filesystem candidates, then the installation: Override, modules,
+        chitin), so the session loads exactly the bytes that
+        ghostrigger_source_identity reports. The BIF-only extract_model
+        ignored Override and could load a different model."""
+        if not isinstance(resref, str) or not _SAFE_RESREF.fullmatch(resref):
+            raise ValueError("resref must be 1-16 letters, digits, '_' or '-'")
+        if not self.game_dir or not self.game_verified:
+            raise ValueError("Game library is not set or not verified")
+        from kotormcp.tools.ghostrigger import _get_services  # noqa: PLC0415
+
+        path_label, mdl_bytes, mdx_bytes = _get_services().locator.locate(
+            resref.lower(), self.game_tag.lower(), self.game_dir
+        )
+        if not mdl_bytes:
+            raise FileNotFoundError(f"MDL not found: {resref}")
+        if len(mdl_bytes) > _MAX_BIF_RESOURCE or len(mdx_bytes or b"") > _MAX_BIF_RESOURCE:
+            raise ValueError("Model resource exceeds bound")
+        return str(path_label), mdl_bytes, mdx_bytes or b""
+
     def load_model(self, resref: str) -> dict:
         """Load a model by resref from the game library."""
-        mdl_bytes, mdx_bytes = self.extract_model(resref)
-        if mdl_bytes is None:
-            return {"ok": False, "error": f"Model '{resref}' not found in game BIFs"}
+        try:
+            path_label, mdl_bytes, mdx_bytes = self.resolve_model(resref)
+        except (ValueError, FileNotFoundError) as e:
+            return {"ok": False, "error": str(e)[:500]}
 
         try:
             from src.core.game.kotor_loader import load_model_from_bytes
             model = load_model_from_bytes(mdl_bytes, mdx_bytes)
         except Exception as e:
-            return {"ok": False, "error": f"Parse failed: {e}"}
+            return {"ok": False, "error": f"Parse failed: {type(e).__name__}: {str(e)[:300]}"}
 
         self.model = model
         self.model_resref = resref.lower()
-        self.model_path = f"bif://{resref}"
+        self.model_path = path_label
+        self.model_source = {
+            "resref": resref.lower(),
+            "path": path_label,
+            "mdl": _bytes_identity(mdl_bytes),
+            "mdx": _bytes_identity(mdx_bytes),
+        }
+        # The previous model's animation bind reference must not reach the
+        # renderer with the new model (it was kept across loads).
+        self.anim_base_pose = None
         self.current_anim_name = None
         self.current_anim_time = 0.0
         self.current_pose = None
@@ -304,6 +419,7 @@ class _DebugSession:
             "animations": anims,
             "supermodel": getattr(model, "supermodel_name", ""),
             "classification": str(getattr(model, "classification", "")),
+            "source": self.model_source,
         }
 
     # ── Asset info ───────────────────────────────────────────────────────────
@@ -366,6 +482,12 @@ class _DebugSession:
     def set_animation(self, anim_name: str) -> dict:
         if self.anim_engine is None:
             return {"ok": False, "error": "No animation engine"}
+        if (
+            not isinstance(anim_name, str)
+            or len(anim_name) > _MAX_ANIMATION_NAME
+            or anim_name not in _get_anim_names(self.model)
+        ):
+            return {"ok": False, "error": "Animation is not defined on the loaded model"}
         try:
             self.anim_engine.play(anim_name, loop=False, blend=False)
             self.current_anim_name = anim_name
@@ -387,6 +509,17 @@ class _DebugSession:
             return {"ok": False, "error": "No animation engine"}
         if self.current_anim_name is None:
             return {"ok": False, "error": "No animation active"}
+        anim = _get_anim_dict(self.model).get(self.current_anim_name)
+        length = float(getattr(anim, "length", 0.0) or 0.0)
+        if (
+            isinstance(t, bool)
+            or not isinstance(t, (int, float))
+            or not math.isfinite(t)
+            or t < 0.0
+            or t > length + 1e-6
+        ):
+            return {"ok": False, "error": f"time must be a finite number between 0 and {length:g}"}
+        t = min(float(t), length)
         try:
             self.anim_engine.seek(t)
             self.current_anim_time = t
@@ -414,38 +547,58 @@ class _DebugSession:
 
     # ── Camera ───────────────────────────────────────────────────────────────
 
+    # ArcBallCamera places the eye at azimuth 90 on +Y, its canonical front
+    # (KOTOR models face +Y). The old table used 0 for "front", so "front"
+    # captures showed the model's side and "side" showed its front.
     CAMERA_PRESETS = {
-        "front": (0.0, 15.0),
+        "front": (90.0, 15.0),
         "diagonal": (45.0, 25.0),
-        "side": (90.0, 15.0),
-        "top": (0.0, 80.0),
-        "back": (180.0, 15.0),
+        "side": (0.0, 15.0),
+        "top": (90.0, 80.0),
+        "back": (270.0, 15.0),
     }
 
     def set_camera(self, preset: str) -> dict:
-        if preset in self.CAMERA_PRESETS:
+        if isinstance(preset, str) and preset in self.CAMERA_PRESETS:
             self.camera_azimuth, self.camera_elevation = self.CAMERA_PRESETS[preset]
             self.camera_preset = preset
             return {"ok": True, "preset": preset,
                     "azimuth": self.camera_azimuth, "elevation": self.camera_elevation}
-        return {"ok": False, "error": f"Unknown preset: {preset}"}
+        return {"ok": False, "error": "preset must be one of " + ", ".join(self.CAMERA_PRESETS)}
 
     # ── Rendering ────────────────────────────────────────────────────────────
 
     def capture_viewport(self, width: int = 512, height: int = 512,
-                         output_path: Optional[str] = None) -> dict:
+                         output_path: Optional[str] = None,
+                         exclusive: bool = False) -> dict:
         if self.model is None:
             return {"ok": False, "error": "No model loaded"}
         if self.renderer is None:
             return {"ok": False, "error": "No renderer available"}
+        if not (_MIN_CAPTURE <= int(width) <= _MAX_CAPTURE and _MIN_CAPTURE <= int(height) <= _MAX_CAPTURE):
+            return {"ok": False, "error": f"width/height must be between {_MIN_CAPTURE} and {_MAX_CAPTURE}"}
+        if output_path and exclusive and os.path.exists(output_path):
+            return {"ok": False, "error": "Refusing to overwrite existing capture"}
 
         try:
             from src.core.camera.arcball_camera import ArcBallCamera
             camera = ArcBallCamera()
             camera.azimuth = self.camera_azimuth
             camera.elevation = self.camera_elevation
-            bb_min = getattr(self.model, "bb_min", None)
-            bb_max = getattr(self.model, "bb_max", None)
+            # MDL headers can carry oversized placeholder bounds, which left
+            # the model a speck in the frame. Frame the renderable world-space
+            # geometry, as ghostrigger_render_model does.
+            try:
+                from src.core.rendering.gpu_scene_helpers import _compute_model_bounds
+
+                rb = _compute_model_bounds(self.model)
+                bb_min = tuple(float(rb[f"min_{a}"]) for a in "xyz")
+                bb_max = tuple(float(rb[f"max_{a}"]) for a in "xyz")
+                if not all(math.isfinite(v) for v in bb_min + bb_max):
+                    raise ValueError("non-finite bounds")
+            except Exception:
+                bb_min = getattr(self.model, "bb_min", None)
+                bb_max = getattr(self.model, "bb_max", None)
             if bb_min is not None and bb_max is not None:
                 camera.frame_bounds(bb_min, bb_max)
             else:
@@ -460,7 +613,7 @@ class _DebugSession:
                 try:
                     from src.core.assets.resource_manager import resolve_model_textures
                     self._model_textures = resolve_model_textures(
-                        self.model, self._resource_manager, game='K1')
+                        self.model, self._resource_manager, game=self.game_tag)
                     log.info(f"DebugSession: loaded {len(self._model_textures)} textures")
                 except Exception as tex_err:
                     log.warning(f"DebugSession: texture load error: {tex_err}")
@@ -480,7 +633,11 @@ class _DebugSession:
 
             if output_path:
                 os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-                img.save(output_path)
+                if exclusive:
+                    with open(output_path, "xb") as handle:
+                        img.save(handle, format="PNG")
+                else:
+                    img.save(output_path)
 
             return {
                 "ok": True,
@@ -489,16 +646,21 @@ class _DebugSession:
                 "output_path": output_path,
                 "backend": self.renderer.perf.get("backend", "unknown"),
                 "frame_ms": self.renderer.perf.get("last_frame_ms", 0),
+                "textures": len(self._model_textures),
+                "game_tag": self.game_tag,
             }
         except Exception as e:
-            import traceback
-            return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
+            # No traceback: it disclosed local paths to MCP clients.
+            return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:500]}"}
 
     def capture_validation_set(self, set_name: str,
-                               output_dir: Optional[str] = None) -> dict:
+                               output_dir: Optional[str] = None,
+                               exclusive: bool = False) -> dict:
         """Capture a standard validation set: bind-pose + animated views."""
         if self.model is None:
             return {"ok": False, "error": "No model loaded"}
+        if not _SAFE_SET_NAME.fullmatch(str(set_name or "")):
+            return {"ok": False, "error": "set_name must be 1-64 letters, digits, '_' or '-'"}
 
         if output_dir is None:
             output_dir = os.path.join(_PROJECT_ROOT, "debug_bundles", self.model_resref)
@@ -508,14 +670,14 @@ class _DebugSession:
         # Bind-pose captures
         saved_anim = self.current_anim_name
         saved_time = self.current_anim_time
-        saved_pose = self.current_pose
+        saved_camera = self.camera_preset
 
         self.set_bind_pose()
         for preset in ["front", "diagonal"]:
             self.set_camera(preset)
             fname = f"{set_name}_bindpose_{preset}.png"
             fpath = os.path.join(output_dir, fname)
-            r = self.capture_viewport(output_path=fpath)
+            r = self.capture_viewport(output_path=fpath, exclusive=exclusive)
             captures.append({"file": fname, "mode": "bind_pose",
                              "camera": preset, "ok": r.get("ok", False)})
 
@@ -537,9 +699,10 @@ class _DebugSession:
                 self.set_animation_time(t)
                 for preset in ["front", "diagonal"]:
                     self.set_camera(preset)
-                    fname = f"{set_name}_{anim_name}_t{int(pct*100)}_{preset}.png"
+                    safe_anim = _UNSAFE_FILE_CHARS.sub("_", str(anim_name))[:64]
+                    fname = f"{set_name}_{safe_anim}_t{int(pct*100)}_{preset}.png"
                     fpath = os.path.join(output_dir, fname)
-                    r = self.capture_viewport(output_path=fpath)
+                    r = self.capture_viewport(output_path=fpath, exclusive=exclusive)
                     captures.append({
                         "file": fname,
                         "mode": "animated",
@@ -549,12 +712,15 @@ class _DebugSession:
                         "ok": r.get("ok", False),
                     })
 
-        # Restore
+        # Restore the caller's pose and camera (the camera used to be left on
+        # the last preset, silently changing the session under the caller).
         if saved_anim:
             self.set_animation(saved_anim)
             self.set_animation_time(saved_time)
         else:
             self.set_bind_pose()
+        if saved_camera in self.CAMERA_PRESETS:
+            self.set_camera(saved_camera)
 
         return {
             "ok": True,
@@ -908,8 +1074,13 @@ class _DebugSession:
 
     # ── Export debug bundle ───────────────────────────────────────────────────
 
-    def export_debug_bundle(self, output_dir: Optional[str] = None) -> dict:
-        """Export a comprehensive debug bundle for the currently loaded asset."""
+    def export_debug_bundle(self, output_dir: Optional[str] = None,
+                            exclusive: bool = False) -> dict:
+        """Export a comprehensive debug bundle for the currently loaded asset.
+
+        With ``exclusive`` the output directory must be new or empty and every
+        file is created exclusively (no overwrite).
+        """
         if self.model is None:
             return {"ok": False, "error": "No model loaded"}
 
@@ -917,6 +1088,8 @@ class _DebugSession:
             output_dir = os.path.join(
                 _PROJECT_ROOT, "debug_bundles", self.model_resref
             )
+        if exclusive and os.path.isdir(output_dir) and os.listdir(output_dir):
+            return {"ok": False, "error": "Refusing to write into a non-empty bundle directory"}
         os.makedirs(output_dir, exist_ok=True)
 
         bundle = {
@@ -947,12 +1120,13 @@ class _DebugSession:
             bundle["cpu_gpu_comparison"] = self.compare_cpu_gpu_skinning(first_skin)
 
         # Validation captures
-        captures = self.capture_validation_set(self.model_resref, output_dir)
+        set_name = _UNSAFE_FILE_CHARS.sub("_", self.model_resref)[:64] or "model"
+        captures = self.capture_validation_set(set_name, output_dir, exclusive=exclusive)
         bundle["validation_captures"] = captures
 
         # Save bundle JSON
         bundle_path = os.path.join(output_dir, "debug_bundle.json")
-        with open(bundle_path, "w") as f:
+        with open(bundle_path, "x" if exclusive else "w", encoding="utf-8") as f:
             json.dump(bundle, f, indent=2, default=str)
 
         return {
@@ -961,6 +1135,8 @@ class _DebugSession:
             "bundle_path": bundle_path,
             "sections": list(bundle.keys()),
             "capture_count": captures.get("total", 0),
+            "captures_passed": captures.get("passed", 0),
+            "game_tag": self.game_tag,
         }
 
 
@@ -984,6 +1160,36 @@ def _reset_session():
     if _session is not None:
         _session.close()
     _session = None
+
+
+def session_source_identity(resref: str, game_path: str) -> Dict[str, Any]:
+    """Read-only: the source identity load_model would bind for ``resref``.
+
+    Uses a throwaway probe (no renderer, no ResourceManager) so the
+    process-wide session is untouched. Same shape as ``model_source``.
+    """
+    if (
+        not isinstance(game_path, str)
+        or len(game_path) > _MAX_PATH_TEXT
+        or not os.path.isabs(game_path)
+        or not os.path.isdir(game_path)
+    ):
+        raise ValueError("game_path must be an absolute game directory")
+    probe = _DebugSession()
+    probe.game_dir = game_path
+    probe.game_tag = probe.detect_game_tag()
+    if not probe.verify_game().get("ok"):
+        raise ValueError("Game library is missing chitin.key or data/models.bif")
+    path_label, mdl_bytes, mdx_bytes = probe.resolve_model(resref)
+    return {
+        "model": {
+            "resref": resref.lower(),
+            "path": path_label,
+            "mdl": _bytes_identity(mdl_bytes),
+            "mdx": _bytes_identity(mdx_bytes),
+        },
+        "game_tag": probe.game_tag,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1025,13 +1231,17 @@ def get_tools() -> List[Dict[str, Any]]:
     return [
         {
             "name": "ghostrigger_debug_launch_app",
-            "description": "Launch (initialize) the headless GhostRigger debug session for runtime skinning inspection.",
-            "inputSchema": {"type": "object", "properties": {}},
+            "description": (
+                "Launch the in-process headless GhostRigger debug session (renderer only; "
+                "not the GhostRigger Debug app). Relaunching replaces the current session. "
+                "Returns a new session_id and the state revision."
+            ),
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         },
         {
             "name": "ghostrigger_debug_close_app",
             "description": "Close the debug session, releasing all resources.",
-            "inputSchema": {"type": "object", "properties": {}},
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         },
         {
             "name": "ghostrigger_debug_get_runtime_status",
@@ -1040,13 +1250,21 @@ def get_tools() -> List[Dict[str, Any]]:
         },
         {
             "name": "ghostrigger_debug_set_game_library_path",
-            "description": "Set the KotOR game data directory path for asset extraction.",
+            "description": (
+                "Set the KotOR game directory for the debug session (read only). "
+                "Indexed as K2 when it holds swkotor2.exe, otherwise K1."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Absolute path to KotOR game data directory (containing chitin.key)"},
+                    "path": {
+                        "type": "string",
+                        "maxLength": 1024,
+                        "description": "Absolute path to the KotOR game directory (containing chitin.key and data/models.bif)",
+                    },
                 },
                 "required": ["path"],
+                "additionalProperties": False,
             },
         },
         {
@@ -1056,13 +1274,21 @@ def get_tools() -> List[Dict[str, Any]]:
         },
         {
             "name": "ghostrigger_debug_load_model",
-            "description": "Load a KotOR model by resource reference (resref) from the game library.",
+            "description": (
+                "Load a KotOR model by resref, resolved through the same locator as the "
+                "model/export tools (Override, modules, chitin). Returns the MDL/MDX SHA-256."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "resref": {"type": "string", "description": "Model resource name (e.g. c_kraytdragon, n_commf)"},
+                    "resref": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{1,16}$",
+                        "description": "Model resource name (e.g. c_kraytdragon, n_commf)",
+                    },
                 },
                 "required": ["resref"],
+                "additionalProperties": False,
             },
         },
         {
@@ -1077,30 +1303,32 @@ def get_tools() -> List[Dict[str, Any]]:
         },
         {
             "name": "ghostrigger_debug_set_animation",
-            "description": "Set the current animation by name and start at time 0.",
+            "description": "Set the current animation (one of the loaded model's animations) and start at time 0.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "animation_name": {"type": "string", "description": "Animation name (e.g. cwalk, crun)"},
+                    "animation_name": {"type": "string", "maxLength": 64, "description": "Animation name (e.g. cwalk, crun)"},
                 },
                 "required": ["animation_name"],
+                "additionalProperties": False,
             },
         },
         {
             "name": "ghostrigger_debug_set_animation_time",
-            "description": "Seek the current animation to a specific time (seconds).",
+            "description": "Seek the current animation to a time between 0 and its length (seconds).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "time": {"type": "number", "description": "Time in seconds"},
+                    "time": {"type": "number", "minimum": 0, "description": "Time in seconds"},
                 },
                 "required": ["time"],
+                "additionalProperties": False,
             },
         },
         {
             "name": "ghostrigger_debug_set_bind_pose",
             "description": "Reset to bind pose (no animation active).",
-            "inputSchema": {"type": "object", "properties": {}},
+            "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         },
         {
             "name": "ghostrigger_debug_set_camera_preset",
@@ -1108,33 +1336,57 @@ def get_tools() -> List[Dict[str, Any]]:
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "preset": {"type": "string", "description": "Camera preset name"},
+                    "preset": {
+                        "type": "string",
+                        "enum": ["front", "diagonal", "side", "top", "back"],
+                        "description": "Camera preset name",
+                    },
                 },
                 "required": ["preset"],
+                "additionalProperties": False,
             },
         },
         {
             "name": "ghostrigger_debug_capture_viewport",
-            "description": "Render the current model/pose/camera and save a PNG screenshot.",
+            "description": "Render the current model/pose/camera and optionally save a PNG screenshot.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "width": {"type": "integer", "default": 512},
-                    "height": {"type": "integer", "default": 512},
-                    "output_path": {"type": "string"},
+                    "width": {"type": "integer", "minimum": 16, "maximum": 4096, "default": 512},
+                    "height": {"type": "integer", "minimum": 16, "maximum": 4096, "default": 512},
+                    "output_path": {"type": "string", "maxLength": 1024, "description": "Absolute .png path"},
+                    "overwrite": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "False creates the PNG exclusively (refuses an existing file)",
+                    },
                 },
+                "additionalProperties": False,
             },
         },
         {
             "name": "ghostrigger_debug_capture_validation_set",
-            "description": "Capture a full validation set (bind-pose + animated at 30%/70% timestamps, front + diagonal).",
+            "description": (
+                "Capture a validation set (bind pose, then up to three animations at 30%/70%, "
+                "front + diagonal; at most 14 PNGs). Restores the session's pose and camera."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "set_name": {"type": "string", "description": "Name for this validation set"},
-                    "output_dir": {"type": "string"},
+                    "set_name": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                        "description": "Name for this validation set (file prefix)",
+                    },
+                    "output_dir": {"type": "string", "maxLength": 1024, "description": "Absolute directory"},
+                    "overwrite": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "False requires a new or empty output_dir and creates every PNG exclusively",
+                    },
                 },
-                "required": ["set_name"],
+                "required": ["set_name", "output_dir"],
+                "additionalProperties": False,
             },
         },
         {
@@ -1227,6 +1479,11 @@ def get_tools() -> List[Dict[str, Any]]:
                 "type": "object",
                 "properties": {
                     "output_dir": {"type": "string"},
+                    "overwrite": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "False requires a new or empty output_dir and creates every file exclusively",
+                    },
                 },
             },
         },
@@ -1237,10 +1494,36 @@ def get_tools() -> List[Dict[str, Any]]:
 #  Handlers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _reply(result: Dict[str, Any], max_chars: Optional[int] = None) -> Dict[str, Any]:
+    """JSON reply; ``ok: false`` payloads are flagged as MCP errors."""
+    raw = json_content(result, max_chars=max_chars) if max_chars else json_content(result)
+    return {**raw, "isError": True} if result.get("ok") is False else raw
+
+
+def _session_reply(s: _DebugSession, result: Dict[str, Any], max_chars: Optional[int] = None) -> Dict[str, Any]:
+    """Successful session mutations report the session id and new revision."""
+    if result.get("ok") is not False:
+        result = {
+            **result,
+            "session_id": s.session_id or None,
+            "revision": s.state_revision() if s.started else None,
+        }
+    return _reply(result, max_chars)
+
+
+def _absolute_path(value: Any, suffix: str = "") -> bool:
+    return (
+        isinstance(value, str)
+        and 0 < len(value) <= _MAX_PATH_TEXT
+        and os.path.isabs(value)
+        and (not suffix or value.lower().endswith(suffix))
+    )
+
+
 async def handle_launch_app(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
     s.launch()
-    return json_content({"status": "ok", "message": "Debug session launched"})
+    return _session_reply(s, {"status": "ok", "message": "Debug session launched"})
 
 
 async def handle_close_app(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1251,27 +1534,18 @@ async def handle_close_app(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 async def handle_get_runtime_status(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
-    return json_content({
-        "started": s.started,
-        "uptime_s": round(s.uptime_s, 1),
-        "game_dir": s.game_dir,
-        "game_verified": s.game_verified,
-        "model_loaded": s.model is not None,
-        "model_resref": s.model_resref,
-        "current_animation": s.current_anim_name,
-        "current_time": s.current_anim_time,
-        "renderer_available": s.renderer is not None,
-        "skin_uploader_active": s.skin_uploader is not None,
-    })
+    return json_content(s.status())
 
 
 async def handle_set_game_library_path(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
+    path = arguments.get("path")
+    if not _absolute_path(path) or not os.path.isdir(path):
+        return _reply({"ok": False, "error": "path must be an absolute game directory"})
     if not s.started:
         s.launch()
-    path = arguments.get("path", "")
-    result = s.set_game_path(path)
-    return json_content(result)
+    result = s.set_game_path(os.path.normpath(path))
+    return _session_reply(s, {**result, "game_tag": s.game_tag})
 
 
 async def handle_verify_game_library(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1283,9 +1557,8 @@ async def handle_load_model(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
     if not s.started:
         s.launch()
-    resref = arguments.get("resref", "")
-    result = s.load_model(resref)
-    return json_content(result)
+    result = s.load_model(arguments.get("resref", ""))
+    return _session_reply(s, result, max_chars=120_000)
 
 
 async def handle_get_loaded_asset_info(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1301,40 +1574,52 @@ async def handle_list_animations(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 async def handle_set_animation(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
-    name = arguments.get("animation_name", "")
-    return json_content(s.set_animation(name))
+    return _session_reply(s, s.set_animation(arguments.get("animation_name", "")))
 
 
 async def handle_set_animation_time(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
-    t = float(arguments.get("time", 0.0))
-    return json_content(s.set_animation_time(t))
+    # No float() coercion: NaN, infinities, strings and booleans are refused.
+    return _session_reply(s, s.set_animation_time(arguments.get("time")))
 
 
 async def handle_set_bind_pose(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
-    return json_content(s.set_bind_pose())
+    return _session_reply(s, s.set_bind_pose())
 
 
 async def handle_set_camera_preset(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
-    preset = arguments.get("preset", "front")
-    return json_content(s.set_camera(preset))
+    return _session_reply(s, s.set_camera(arguments.get("preset", "front")))
 
 
 async def handle_capture_viewport(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
-    w = int(arguments.get("width", 512))
-    h = int(arguments.get("height", 512))
+    w, h = arguments.get("width", 512), arguments.get("height", 512)
+    if any(isinstance(v, bool) or not isinstance(v, int) for v in (w, h)):
+        return _reply({"ok": False, "error": "width/height must be integers"})
     out = arguments.get("output_path")
-    return json_content(s.capture_viewport(w, h, out))
+    if out is not None and not _absolute_path(out, ".png"):
+        return _reply({"ok": False, "error": "output_path must be an absolute .png path"})
+    exclusive = arguments.get("overwrite", True) is False
+    return _session_reply(s, s.capture_viewport(w, h, out, exclusive=exclusive))
 
 
 async def handle_capture_validation_set(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
     name = arguments.get("set_name", "validation")
     out_dir = arguments.get("output_dir")
-    return json_content(s.capture_validation_set(name, out_dir))
+    # The default used to be inside the Ghost checkout.
+    if not _absolute_path(out_dir):
+        return _reply({"ok": False, "error": "output_dir must be an absolute directory path"})
+    exclusive = arguments.get("overwrite", True) is False
+    if exclusive and os.path.isdir(out_dir) and os.listdir(out_dir):
+        return _reply({"ok": False, "error": "Refusing to write into a non-empty capture directory"})
+    try:
+        result = s.capture_validation_set(name, out_dir, exclusive=exclusive)
+    except Exception as exc:
+        result = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:500]}"}
+    return _session_reply(s, result, max_chars=120_000)
 
 
 async def handle_get_skinning_state(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1399,4 +1684,11 @@ async def handle_compare_cpu_gpu(arguments: Dict[str, Any]) -> Dict[str, Any]:
 async def handle_export_debug_bundle(arguments: Dict[str, Any]) -> Dict[str, Any]:
     s = _get_session()
     out_dir = arguments.get("output_dir")
-    return json_content(s.export_debug_bundle(out_dir))
+    try:
+        result = s.export_debug_bundle(out_dir, exclusive=arguments.get("overwrite", True) is False)
+    except FileExistsError:
+        result = {"ok": False, "error": "Refusing to overwrite existing bundle file"}
+    except Exception as exc:
+        result = {"ok": False, "error": f"{type(exc).__name__}: {str(exc)[:500]}"}
+    raw = json_content(result, max_chars=120_000)
+    return {**raw, "isError": True} if not result.get("ok") else raw

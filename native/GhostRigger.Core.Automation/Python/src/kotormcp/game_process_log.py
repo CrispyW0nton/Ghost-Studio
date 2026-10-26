@@ -44,6 +44,7 @@ TH32CS_SNAPMODULE32 = 0x00000010
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+MAX_IMAGE_PATH_CHARS = 32768
 SYNCHRONIZE = 0x00100000
 STILL_ACTIVE = 259
 PROCESS_VM_READ = 0x0010
@@ -343,6 +344,13 @@ class Win32ProcessProbe:
         k.OpenProcess.restype = wintypes.HANDLE
         k.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
         k.GetExitCodeProcess.restype = wintypes.BOOL
+        k.QueryFullProcessImageNameW.argtypes = [
+            wintypes.HANDLE,
+            wintypes.DWORD,
+            wintypes.LPWSTR,
+            ctypes.POINTER(wintypes.DWORD),
+        ]
+        k.QueryFullProcessImageNameW.restype = wintypes.BOOL
         k.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
         k.WaitForSingleObject.restype = wintypes.DWORD
         k.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
@@ -415,6 +423,28 @@ class Win32ProcessProbe:
         if not candidates:
             return None
         return sorted(candidates, key=lambda proc: proc.pid)[-1]
+
+    def process_image_path(self, pid: int) -> Optional[str]:
+        """Return the full on-disk image path of a pid, or None.
+
+        Used to verify that an explicitly supplied pid is really the KOTOR
+        executable before the debugger attaches, so a stray pid cannot make the
+        logger debug-attach an unrelated process (LM Studio, Substance Painter).
+        """
+
+        if not pid:
+            return None
+        handle = self.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if not handle:
+            return None
+        try:
+            size = wintypes.DWORD(MAX_IMAGE_PATH_CHARS)
+            buffer = ctypes.create_unicode_buffer(size.value)
+            if self.kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+                return buffer.value
+            return None
+        finally:
+            self.kernel32.CloseHandle(handle)
 
     def process_exists(self, pid: int) -> bool:
         handle = self.kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
@@ -672,6 +702,49 @@ def _game_key(game: str) -> str:
     return text if text in KOTOR_EXE_BY_GAME else "k2"
 
 
+def _normcase_path(path: str) -> str:
+    try:
+        return os.path.normcase(os.path.realpath(str(path)))
+    except OSError:
+        return os.path.normcase(str(path))
+
+
+def verify_pid_identity(
+    pid: int,
+    *,
+    game: str,
+    game_root: Optional[str],
+    probe: Optional["Win32ProcessProbe"] = None,
+) -> dict[str, Any]:
+    """Confirm that ``pid`` is the KOTOR executable before attaching a debugger.
+
+    When ``game_root`` is known the check is the exact image path
+    ``<game_root>/<exe>``; otherwise the executable basename must match.  Raises
+    ``ValueError`` on any mismatch so the logger never debug-attaches an
+    unrelated process supplied by a stray pid.
+    """
+
+    exe_name = KOTOR_EXE_BY_GAME[_game_key(game)]
+    probe = probe or Win32ProcessProbe()
+    if not probe.process_exists(int(pid)):
+        raise ValueError(f"pid {pid} is not a running process")
+    image = probe.process_image_path(int(pid))
+    if not image:
+        raise ValueError(f"pid {pid} image path could not be read; refusing to attach")
+    basename = os.path.basename(image).lower()
+    if basename != exe_name.lower():
+        raise ValueError(
+            f"pid {pid} is {basename}, not {exe_name}; refusing to debug-attach a non-KOTOR process"
+        )
+    if game_root:
+        expected = _normcase_path(os.path.join(str(game_root), exe_name))
+        if _normcase_path(image) != expected:
+            raise ValueError(
+                f"pid {pid} image {image} is not the installation executable {expected}; refusing to attach"
+            )
+    return {"pid": int(pid), "image": image, "exe_name": exe_name}
+
+
 def default_session_root() -> Path:
     return _repo_root() / "Saved" / "KotorLiveLogs"
 
@@ -758,6 +831,15 @@ def start_log_session(
     game_root_path = Path(game_root).resolve() if game_root else None
     if normalized_target and game_root_path is None:
         raise ValueError("expected_warp_target requires a resolved KOTOR game_root")
+    # An explicit pid must be the KOTOR executable before the detached helper is
+    # allowed to debug-attach it; a stray pid must never attach to another app.
+    pid_identity = None
+    if pid:
+        pid_identity = verify_pid_identity(
+            int(pid),
+            game=game,
+            game_root=str(game_root_path) if game_root_path is not None else None,
+        )
     start_module_snapshot = (
         _expected_module_snapshot(game_root_path, normalized_target)
         if game_root_path is not None and normalized_target
@@ -811,6 +893,7 @@ def start_log_session(
         "game": _game_key(game),
         "game_root": str(game_root_path or ""),
         "target_pid": int(pid) if pid else None,
+        "target_pid_identity": pid_identity,
         "duration_seconds": max(5, int(duration_seconds or DEFAULT_SESSION_SECONDS)),
         "asset_resrefs": asset_resrefs or ["c_drexlf", "appearance"],
         "started_at": _utc_now(),
@@ -1052,6 +1135,16 @@ def run_monitor(
     probe = Win32ProcessProbe()
     target = None
     if pid:
+        # Re-verify identity in the child too: the detached helper must not
+        # debug-attach a pid that is not the KOTOR executable, even if invoked
+        # directly rather than through start_log_session.
+        try:
+            identity = verify_pid_identity(int(pid), game=game_key, game_root=game_root, probe=probe)
+        except ValueError as exc:
+            writer.write({"event": "pid_identity_rejected", "timestamp": _utc_now(), "pid": int(pid), "error": str(exc)})
+            _finalize_summary(session_path, writer, probe, started_epoch, game_root, asset_resrefs)
+            return 2
+        writer.write({"event": "pid_identity_verified", "timestamp": _utc_now(), **identity})
         target = ProcessInfo(pid=int(pid), parent_pid=0, exe=exe_name, threads=0)
     elif wait_for_process:
         deadline = time.time() + max(5, duration_seconds)

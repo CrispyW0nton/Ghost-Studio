@@ -51,7 +51,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MDL_MDL_WRITER",
             "source_path": "src/core/mdl/mdl_writer.py",
             "packaged_path": "Python/src/core/mdl/mdl_writer.py",
-            "sha256": "534a0f36ab35d564b7e3b3df44d3402076c6183ac7ddc7262dc942973c2ffcf7"
+            "sha256": "a48468d884b6aaacb12d6517bf7e55e7ffdc4c4b3ac7055606b4c00370a9f88e"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_QT_CORE",

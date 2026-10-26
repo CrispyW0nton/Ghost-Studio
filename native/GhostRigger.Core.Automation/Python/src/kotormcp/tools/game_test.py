@@ -90,6 +90,10 @@ async def handle_prepare_save_warp_test(arguments: Dict[str, Any]) -> Dict[str, 
         installation = load_installation(game, inp.path)
         game_root = Path(installation.path())
         target_module = _clean_module_root(inp.target_module)
+        if not re.fullmatch(r"[a-z0-9_]{1,32}", target_module):
+            return json_content(
+                {"error": f"Invalid target_module (expected 1-32 chars [a-z0-9_]): {inp.target_module!r}"}
+            )
         saves = _discover_saves(game_root, explicit_root=inp.save_root)
         selected = _select_save(
             saves,
@@ -201,13 +205,48 @@ def _candidate_save_roots(game_root: Path, explicit_root: Optional[str]) -> Iter
     yield game_root.parent / "saves"
 
 
+MAX_SAVE_SCAN_DIRS = 20000
+MAX_SAVE_ROWS = 1000
+SAVE_SCAN_MAX_DEPTH = 6
+
+
+def _iter_savegames(root: Path) -> "Iterable[Path]":
+    """Yield SAVEGAME.sav paths under ``root`` with bounded breadth and depth.
+
+    The previous ``root.glob('**/SAVEGAME.sav')`` walked an unbounded tree when
+    an explicit ``save_root`` was supplied.  This bounds the number of scanned
+    directories and the recursion depth so a large or adversarial root cannot
+    stall the shared MCP queue.
+    """
+
+    scanned = 0
+    stack: list[tuple[Path, int]] = [(root, 0)]
+    while stack:
+        current, depth = stack.pop()
+        scanned += 1
+        if scanned > MAX_SAVE_SCAN_DIRS:
+            return
+        try:
+            entries = list(current.iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_file() and entry.name.lower() == "savegame.sav":
+                    yield entry
+                elif entry.is_dir() and depth < SAVE_SCAN_MAX_DEPTH:
+                    stack.append((entry, depth + 1))
+            except OSError:
+                continue
+
+
 def _discover_saves(game_root: Path, *, explicit_root: Optional[str]) -> list[dict[str, Any]]:
     seen: set[Path] = set()
     rows: list[dict[str, Any]] = []
     for root in _candidate_save_roots(game_root, explicit_root):
         if not root.is_dir():
             continue
-        for savegame in root.glob("**/SAVEGAME.sav"):
+        for savegame in _iter_savegames(root):
             folder = savegame.parent.resolve()
             if folder in seen:
                 continue
@@ -215,6 +254,10 @@ def _discover_saves(game_root: Path, *, explicit_root: Optional[str]) -> list[di
             summary = _save_summary(folder)
             if summary:
                 rows.append(summary)
+            if len(rows) >= MAX_SAVE_ROWS:
+                break
+        if len(rows) >= MAX_SAVE_ROWS:
+            break
     rows.sort(key=lambda item: float(item.get("modified_time") or 0), reverse=True)
     return rows
 

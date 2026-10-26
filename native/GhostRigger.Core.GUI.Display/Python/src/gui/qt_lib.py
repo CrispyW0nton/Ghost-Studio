@@ -23,6 +23,8 @@ _GROUPS: dict[str, tuple[str, ...]] = {
         "qt_theme",
     ),
     "dialogs": (
+        "unreal_conversion_dialog",
+        "unreal_level_import_dialog",
         "add_model_to_scene_dialog",
         "fbx_sdk_setup_dialog",
         "qt_render_frame_dialog",
@@ -128,6 +130,7 @@ _GROUPS: dict[str, tuple[str, ...]] = {
         "theme_watcher",
     ),
     "panels": (
+        "unreal_pipeline_panel",
         "qt_animation_panel",
         "qt_content_browser_panel",
         "adjust_pivot_panel",

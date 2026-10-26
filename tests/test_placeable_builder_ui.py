@@ -28,6 +28,7 @@ def test_placeable_builder_is_a_dedicated_service_facing_workbench() -> None:
         assert [window.inspector_tabs.tabText(index) for index in range(window.inspector_tabs.count())] == [
             "Identity",
             "Visual",
+            "Secondary Motion",
             "Interaction",
             "Scripts / Conversation",
             "Particles",
@@ -43,6 +44,7 @@ def test_placeable_builder_is_a_dedicated_service_facing_workbench() -> None:
         assert window.inspector_tabs.tabBar().usesScrollButtons() is True
         assert window.inspector_tabs.tabBar().expanding() is False
         assert window.inspector_tabs.tabBar().elideMode() == QtCore.Qt.ElideNone
+        assert window.secondary_motion_editor.runtime_status.text().startswith("Safe authoring mode")
         assert [action.text() for action in window.placeable_toolbar.actions() if not action.isSeparator()] == [
             "New",
             "Clone",
@@ -181,6 +183,8 @@ def test_placeable_builder_round_trips_domain_shape_without_dropping_evidence_or
         assert output["resources"]["mdl"] == mdl_address
         assert output["base_template"] == base_template
         assert output["metadata"]["future_metadata"] == {"preserve": True}
+        assert output["secondary_motion"]["schema"] == "ghostrigger.secondary_motion_profile.v1"
+        assert output["secondary_motion"]["runtime"]["write_enabled"] is False
 
         window.display_name_edit.setText("Updated Cargo Box")
         assert window.current_document()["display_name"] == "Updated Cargo Box"
@@ -243,7 +247,7 @@ def test_placeable_builder_library_search_readiness_and_completion_signals(tmp_p
         assert "Not proven" in window.readiness_labels["game"].text()
         assert window.validation_issues_tree.topLevelItemCount() == 1
         window.set_readiness(report, reveal=True)
-        assert window.inspector_tabs.currentIndex() == 6
+        assert window.inspector_tabs.currentIndex() == 7
 
         window.saveToLibraryRequested.connect(saved.append)
         window.libraryChanged.connect(changed.append)

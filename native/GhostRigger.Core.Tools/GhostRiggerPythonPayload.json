@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Tools",
-    "file_count": 404,
+    "file_count": 405,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -27,7 +27,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_ASSETS_RESOURCE_MANAGER",
             "source_path": "src/core/assets/resource_manager.py",
             "packaged_path": "Python/src/core/assets/resource_manager.py",
-            "sha256": "f315d584449cccb77df10db46d5ec3e2d09a17ecf2c02a260b3c26f034fd3091"
+            "sha256": "26ad885664ab592be5d7597f0319b35ef789a6818c5a0f63432e0e383750fca9"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_CAMERA_INIT",
@@ -207,7 +207,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_KMAP_SERIALIZER",
             "source_path": "src/core/level/kmap_serializer.py",
             "packaged_path": "Python/src/core/level/kmap_serializer.py",
-            "sha256": "89851b060acef151531189d57a0133afb881181b81ec7fb560e050ceda0b1375"
+            "sha256": "4ed7f89cf978c0500f379b1e740135d15cd5d0427ebca09ab6ea8d00a124b4af"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_KMAP_VALIDATOR",
@@ -219,7 +219,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_EXPORT_BRIDGE",
             "source_path": "src/core/level/level_export_bridge.py",
             "packaged_path": "Python/src/core/level/level_export_bridge.py",
-            "sha256": "95b567fad83e9807a84b30340501b65ba781be693817204c56e131135d267661"
+            "sha256": "ee83764532932b044cd9363f2fe4102c40ecb06acb73f94d8576f55db79e455b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_MANIFEST",
@@ -339,7 +339,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_BAKE_SETTINGS",
             "source_path": "src/core/lighting/lightmap_bake_settings.py",
             "packaged_path": "Python/src/core/lighting/lightmap_bake_settings.py",
-            "sha256": "1ae2166bd893626780996e5c4810dbe519cb4c6f8396b2ab4598d7b9ea7b1e1e"
+            "sha256": "c576334fa1e27cb58e075c35e986c16639e36bd959aff06ae3095ccd9f69a17d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_BAKER",
@@ -375,7 +375,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_LIGHTING_SOLVER",
             "source_path": "src/core/lighting/lightmap_lighting_solver.py",
             "packaged_path": "Python/src/core/lighting/lightmap_lighting_solver.py",
-            "sha256": "4e6181bf409d9641736a4f0f97dc07eca1d8fc2aa10b3176b633fb149279deff"
+            "sha256": "858e66300453a3515d8898b3d8226f59247ce8943fca466b982469390f430cbb"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHTMAP_MANIFEST",
@@ -435,7 +435,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_PREVIEW_CACHE",
             "source_path": "src/core/lighting/preview_cache.py",
             "packaged_path": "Python/src/core/lighting/preview_cache.py",
-            "sha256": "7cbacb2ee6e2d75a5c021579c8f0dd1af0a43cf28eb53e2fde72132d26a6b40c"
+            "sha256": "56b301e98eaa472f17a293d8457a8dcb7c83af06183c5bd1e1bc195b99c19156"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_RAYCAST_BACKEND",
@@ -519,7 +519,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_EXPORT",
             "source_path": "src/core/modules/authored_module_export.py",
             "packaged_path": "Python/src/core/modules/authored_module_export.py",
-            "sha256": "bbd57c8140d2b29ea4ab5fe6279f80dce6a264d2de46f5a3216b030ca22869a0"
+            "sha256": "3babfa50a98274c4f4293bc39e969b88405a2702b1d34cf877f69f529dd1637b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_KMAP_BRIDGE",
@@ -675,7 +675,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_SKY_TRAFFIC",
             "source_path": "src/core/modules/authored_sky_traffic.py",
             "packaged_path": "Python/src/core/modules/authored_sky_traffic.py",
-            "sha256": "c9ba5a3e98e9e4e9ec792b13d612a75058140ff1abf8ae328166bb90c4c59902"
+            "sha256": "9bb4b021b2d154d27199f53bc15bb44bfd845a1da54111fa686dd451381e7408"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_SKYBOX",
@@ -945,7 +945,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_STOCK_CONTENT_PREVIEW",
             "source_path": "src/core/modules/map_studio_stock_content_preview.py",
             "packaged_path": "Python/src/core/modules/map_studio_stock_content_preview.py",
-            "sha256": "5829b44923f68936aaa357e60132101979beae6b0c0511af963fe4ab36d1ccb3"
+            "sha256": "216f2d974e30cd9390fa682654807eb98a11f1ad6229f76dbd2f07bf265e59f2"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_TERRAIN_KIT",
@@ -1011,7 +1011,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_CONTROLLER",
             "source_path": "src/core/modules/module_editor_controller.py",
             "packaged_path": "Python/src/core/modules/module_editor_controller.py",
-            "sha256": "2832580e850609a4952555d27552c4534d17dbcbc91f572bada4b80472248aa6"
+            "sha256": "0d69f820fd51c3761f98e950abed69c173d9ffdfe50aa40954153c6a8a9e79a0"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_MODEL",
@@ -1209,7 +1209,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_SPECIAL_UNITY_MALAK_SMOKE",
             "source_path": "src/core/special/unity_malak_smoke.py",
             "packaged_path": "Python/src/core/special/unity_malak_smoke.py",
-            "sha256": "369bcd3d41f00876fe5788c723e717cae8e1c0a1ec641a425fe691b171028137"
+            "sha256": "8cce394d9bcd2ac358a60572ead18deed67c90953847fe45a4548ae83b91a100"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_STOCK_MODULES_STOCK_MODULE_ARCHIVE",
@@ -1323,7 +1323,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_TOOLS_PLACEABLE_BUILDER_TOOL_SERVICE",
             "source_path": "src/core/tools/placeable_builder_tool_service.py",
             "packaged_path": "Python/src/core/tools/placeable_builder_tool_service.py",
-            "sha256": "57d05c93d390bc98d2e6d4b2eb5522a64fae37e643914c6065ce60debd5a5d8a"
+            "sha256": "e73c74424a0c506e12aa855676537be5a3afaa33b78f23d6053870d6a44d6a65"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_WALKMESH_INIT",
@@ -1773,7 +1773,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_MODULE_EDITOR_MODULE_EDITOR_OUTLINER",
             "source_path": "src/gui/panels/module_editor/module_editor_outliner.py",
             "packaged_path": "Python/src/gui/panels/module_editor/module_editor_outliner.py",
-            "sha256": "3065d0a61314a2f2681f099feda91ce343b175bef71d8a57d4e2afe641c51a5f"
+            "sha256": "f292f9868936d5f0c0b3a91b7475ba3346e58c7a3ae70fac31680ff37136c2c6"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_MODULE_EDITOR_MODULE_EDITOR_PROPERTIES",
@@ -1869,7 +1869,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_BODY_ATTACHMENT_PANEL",
             "source_path": "src/gui/panels/qt_body_attachment_panel.py",
             "packaged_path": "Python/src/gui/panels/qt_body_attachment_panel.py",
-            "sha256": "c51776b6f009b080599234ccbaffd9a6d9557a60d60378ca764c595149f72d11"
+            "sha256": "fd441fdd1ea14a2cf8a88492e741d1c6a46da36958764ec56b277921ba0ce130"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_CAMERA_PANEL",
@@ -1881,7 +1881,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_CHARACTER_BUILDER_PANEL",
             "source_path": "src/gui/panels/qt_character_builder_panel.py",
             "packaged_path": "Python/src/gui/panels/qt_character_builder_panel.py",
-            "sha256": "b836217dde3b954fff672de32a79c7b81f45b3d1e89a6dded839b38d4065f0f9"
+            "sha256": "66131f4bea060bdddcc656837ae6403f0b205ca6c2e32fa4d787210e512aadf6"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_INSPECTOR_PANEL",
@@ -1983,19 +1983,19 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_BAS_WORKFLOW",
             "source_path": "src/gui/windows/application_core/shared/bas_workflow.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/bas_workflow.py",
-            "sha256": "282a93d5d9b16d2a068b1fb10acc46899b247715c68be1161c30a59dbe783f67"
+            "sha256": "3f242391fbfeec098c1fc1725bba073648bb8a1ab9b07e08f6fa01b6f87c0833"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MAIN_LAYOUT",
             "source_path": "src/gui/windows/application_core/shared/main_layout.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/main_layout.py",
-            "sha256": "3030dde60ad68be1e4d046cbfcb05460f08afd4d3f965ceb40cc21612d305c61"
+            "sha256": "973e180f42a2ed6107d0a063e93fd620e4fb4bcf76d364233f5bb3327f088c98"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_RESOURCE_LOADING",
             "source_path": "src/gui/windows/application_core/shared/resource_loading.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/resource_loading.py",
-            "sha256": "70a61a20bace859cbfd689a8088f74f2690e59666fbc4a45d6047b172528f04e"
+            "sha256": "0ad2c2f0f03c58ddbae834eaed30ec3c3ff2034e5ccbd6c757e6d654716d49c1"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_RESOURCE_PANELS",
@@ -2007,7 +2007,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_MODULE_EDITOR_WINDOW",
             "source_path": "src/gui/windows/module_editor_window.py",
             "packaged_path": "Python/src/gui/windows/module_editor_window.py",
-            "sha256": "204872423324baba9499f361851ade11725d2078e375f8e3abfe887daa5002bc"
+            "sha256": "7f2443b1cce7c40189ca2e16817f42adc565cbf945a423c381738e4aa609f6fd"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_BLUEPRINT_EDITOR",
@@ -2031,7 +2031,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_PLACEABLE_BUILDER",
             "source_path": "src/gui/windows/qt_placeable_builder.py",
             "packaged_path": "Python/src/gui/windows/qt_placeable_builder.py",
-            "sha256": "a8c88bfd7eeb3d4005285f01991181890229976240fc5fe074f6e024888f79d9"
+            "sha256": "7c8e846c6c2346f193cfa3d2a25ee246c37fbc4b0a12fa6f4fc001d37a330a45"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_PLACEABLE_BUILDER_CONTROLLER",
@@ -2400,6 +2400,12 @@
             "sha256": "5adc698cbf44eaa6a7be1816ae689ad95f6c81947d29338923968de84288bf2a"
         },
         {
+            "resource_name": "PYTHON_PAYLOAD_SYSTEMS_BAS_CHARACTER_PRESETS",
+            "source_path": "src/systems/bas/character_presets.py",
+            "packaged_path": "Python/src/systems/bas/character_presets.py",
+            "sha256": "ffe516a59f91c6332c8ffc973b6db473cc65a88660950d86c5baa939c483c338"
+        },
+        {
             "resource_name": "PYTHON_PAYLOAD_SYSTEMS_BAS_HEAD_RESOLUTION",
             "source_path": "src/systems/bas/head_resolution.py",
             "packaged_path": "Python/src/systems/bas/head_resolution.py",
@@ -2409,13 +2415,13 @@
             "resource_name": "PYTHON_PAYLOAD_SYSTEMS_BAS_MODEL_RECIPE",
             "source_path": "src/systems/bas/model_recipe.py",
             "packaged_path": "Python/src/systems/bas/model_recipe.py",
-            "sha256": "b4f577d63a22f07d36a448d0de59cdc127fba0545bbdb5c636e7e7919f4caaa3"
+            "sha256": "92a3cf259dd3836f488586756a6349e5cc612712ef1478269f282d2d71a9f680"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_SYSTEMS_BAS_PREVIEW_COMPOSER",
             "source_path": "src/systems/bas/preview_composer.py",
             "packaged_path": "Python/src/systems/bas/preview_composer.py",
-            "sha256": "8c4d05fd3fc968707e736d80481b9b86a0ea4133297fa55705aa834ccc1c85be"
+            "sha256": "f22ae3164a35d5ac1f63e1c21adffa86ad0f72c25c062a33629205962b68c20a"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_WORKBENCH_INIT",

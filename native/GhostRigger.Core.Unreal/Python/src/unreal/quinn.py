@@ -21,7 +21,30 @@ from src.core.geometry.model_data import (
 )
 
 
-SKELS_DIR = Path(__file__).resolve().parent / "skels"
+def _resolve_skels_dir() -> Path:
+    """Locate the bundled SKM_Quinn_Simple assets.
+
+    After the native split the skeleton files ship in the host runtime payload
+    (native/GhostRigger.Native.Core.Host/RuntimePayload/src/unreal/skels), not
+    beside this package copy, so a module-relative ``skels`` directory is empty
+    in source checkouts and the Quinn target silently had no bones.
+    """
+
+    local = Path(__file__).resolve().parent / "skels"
+    candidates = [local]
+    for ancestor in Path(__file__).resolve().parents:
+        if (ancestor / "native" / "GhostRigger.Native.Core.Host").is_dir():
+            candidates.append(
+                ancestor / "native" / "GhostRigger.Native.Core.Host" / "RuntimePayload" / "src" / "unreal" / "skels"
+            )
+            break
+    for candidate in candidates:
+        if (candidate / "SKM_Quinn_Simple_BoneMap.xml").is_file():
+            return candidate
+    return local
+
+
+SKELS_DIR = _resolve_skels_dir()
 QUINN_BONE_MAP = SKELS_DIR / "SKM_Quinn_Simple_BoneMap.xml"
 QUINN_FBX = SKELS_DIR / "SKM_Quinn_Simple.FBX"
 

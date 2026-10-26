@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Scene",
-    "file_count": 136,
+    "file_count": 140,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -27,7 +27,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_KMAP_SERIALIZER",
             "source_path": "src/core/level/kmap_serializer.py",
             "packaged_path": "Python/src/core/level/kmap_serializer.py",
-            "sha256": "89851b060acef151531189d57a0133afb881181b81ec7fb560e050ceda0b1375"
+            "sha256": "4ed7f89cf978c0500f379b1e740135d15cd5d0427ebca09ab6ea8d00a124b4af"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_KMAP_VALIDATOR",
@@ -39,7 +39,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_EXPORT_BRIDGE",
             "source_path": "src/core/level/level_export_bridge.py",
             "packaged_path": "Python/src/core/level/level_export_bridge.py",
-            "sha256": "95b567fad83e9807a84b30340501b65ba781be693817204c56e131135d267661"
+            "sha256": "ee83764532932b044cd9363f2fe4102c40ecb06acb73f94d8576f55db79e455b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_LEVEL_MANIFEST",
@@ -129,7 +129,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_EXPORT",
             "source_path": "src/core/modules/authored_module_export.py",
             "packaged_path": "Python/src/core/modules/authored_module_export.py",
-            "sha256": "bbd57c8140d2b29ea4ab5fe6279f80dce6a264d2de46f5a3216b030ca22869a0"
+            "sha256": "3babfa50a98274c4f4293bc39e969b88405a2702b1d34cf877f69f529dd1637b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_KMAP_BRIDGE",
@@ -291,7 +291,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_SKY_TRAFFIC",
             "source_path": "src/core/modules/authored_sky_traffic.py",
             "packaged_path": "Python/src/core/modules/authored_sky_traffic.py",
-            "sha256": "c9ba5a3e98e9e4e9ec792b13d612a75058140ff1abf8ae328166bb90c4c59902"
+            "sha256": "9bb4b021b2d154d27199f53bc15bb44bfd845a1da54111fa686dd451381e7408"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_SKYBOX",
@@ -561,7 +561,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_STOCK_CONTENT_PREVIEW",
             "source_path": "src/core/modules/map_studio_stock_content_preview.py",
             "packaged_path": "Python/src/core/modules/map_studio_stock_content_preview.py",
-            "sha256": "5829b44923f68936aaa357e60132101979beae6b0c0511af963fe4ab36d1ccb3"
+            "sha256": "216f2d974e30cd9390fa682654807eb98a11f1ad6229f76dbd2f07bf265e59f2"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_TERRAIN_KIT",
@@ -627,7 +627,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_CONTROLLER",
             "source_path": "src/core/modules/module_editor_controller.py",
             "packaged_path": "Python/src/core/modules/module_editor_controller.py",
-            "sha256": "2832580e850609a4952555d27552c4534d17dbcbc91f572bada4b80472248aa6"
+            "sha256": "0d69f820fd51c3761f98e950abed69c173d9ffdfe50aa40954153c6a8a9e79a0"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_MODEL",
@@ -688,6 +688,30 @@
             "source_path": "src/core/modules/stock_module_importer.py",
             "packaged_path": "Python/src/core/modules/stock_module_importer.py",
             "sha256": "bb8970f02a79e75c95cbd2b553361d0b2aa7dc3524c540514180e77769051d0b"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_UNREAL_AUTHORED_REIMPORT",
+            "source_path": "src/core/modules/unreal_authored_reimport.py",
+            "packaged_path": "Python/src/core/modules/unreal_authored_reimport.py",
+            "sha256": "74567521fe603592a13784570614cabb9b3a6b4c0bbb7c0a50769eb03d07c94a"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_UNREAL_IMPORT_STATE",
+            "source_path": "src/core/modules/unreal_import_state.py",
+            "packaged_path": "Python/src/core/modules/unreal_import_state.py",
+            "sha256": "78fdb26dc7253443cfc994f0f48ebb95be247cf13a2c603ee39418cc15a38a98"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_UNREAL_LEVEL_IMPORT",
+            "source_path": "src/core/modules/unreal_level_import.py",
+            "packaged_path": "Python/src/core/modules/unreal_level_import.py",
+            "sha256": "b7f00a08dfb08b83b140786ddc64b9ae1c86f9e67cc2e724c217774b7af29eb1"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_UNREAL_SECTOR_PROJECTION",
+            "source_path": "src/core/modules/unreal_sector_projection.py",
+            "packaged_path": "Python/src/core/modules/unreal_sector_projection.py",
+            "sha256": "3b3a784bec9cf19189ee905271ffd4c153a0cfbb1cfe49f56f3fb74bab556e88"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCENE_INIT",

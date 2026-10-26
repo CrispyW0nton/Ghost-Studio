@@ -12,7 +12,6 @@ from typing import Any
 from src.systems.bas.attachment_alignment import normalize_bas_transform
 from src.systems.bas.model_recipe import BAS_SOCKET_BY_SLOT
 
-
 BAS_ATTACHMENT_SLOTS = (
     "head",
     "mask",
@@ -78,7 +77,11 @@ def find_model_node(model: Any, name: str):
     except Exception:
         nodes = []
     by_lower = {str(getattr(node, "name", "") or "").lower(): node for node in nodes}
-    for candidate in (target, "rhand_g" if target == "rhand" else "", "lhand_g" if target == "lhand" else ""):
+    for candidate in (
+        target,
+        "rhand_g" if target == "rhand" else "",
+        "lhand_g" if target == "lhand" else "",
+    ):
         if candidate and candidate in by_lower:
             return by_lower[candidate]
     return None
@@ -92,7 +95,14 @@ def bas_slot_for_preview_socket(socket: str, resref: str = "") -> str:
         return "head"
     if key in {"lhand", "left_hand", "left_weapon", "lhand_g"} or key.startswith("left"):
         return "left_weapon"
-    if key in {"rhand", "right_hand", "right_weapon", "rhand_g", "lightsaberhook", "deflecthook"} or key.startswith("right"):
+    if key in {
+        "rhand",
+        "right_hand",
+        "right_weapon",
+        "rhand_g",
+        "lightsaberhook",
+        "deflecthook",
+    } or key.startswith("right"):
         return "right_weapon"
     return ""
 
@@ -114,8 +124,16 @@ def tag_bas_attachment_subtree(node: Any, root: Any) -> None:
         setattr(current, "_gr_bas_attachment_layer", True)
         setattr(current, "_gr_bas_attachment_root_ref", root)
         try:
-            setattr(current, "_gr_bas_attachment_source_model_id", int(getattr(root, "_gr_bas_attachment_source_model_id", 0) or 0))
-            setattr(current, "_gr_bas_attachment_source_model_name", str(getattr(root, "_gr_bas_attachment_source_model_name", "") or ""))
+            setattr(
+                current,
+                "_gr_bas_attachment_source_model_id",
+                int(getattr(root, "_gr_bas_attachment_source_model_id", 0) or 0),
+            )
+            setattr(
+                current,
+                "_gr_bas_attachment_source_model_name",
+                str(getattr(root, "_gr_bas_attachment_source_model_name", "") or ""),
+            )
         except Exception:
             pass
         stack.extend(getattr(current, "children", []) or [])
@@ -157,14 +175,20 @@ def attach_bas_item_to_preview(
 ) -> bool:
     """Attach a model copy to a body preview as a BAS socket-following layer."""
     socket = find_model_node(preview_model, socket_name)
+    if socket is None:
+        return False
     item_copy = copy.deepcopy(item_model)
     reset_bas_model_node_traversal(item_copy)
     item_root = getattr(item_copy, "root_node", None)
-    if socket is None or item_root is None:
+    if item_root is None:
         return False
     try:
         setattr(item_root, "_gr_bas_attachment_source_model_id", id(item_model))
-        setattr(item_root, "_gr_bas_attachment_source_model_name", str(getattr(item_model, "name", "") or ""))
+        setattr(
+            item_root,
+            "_gr_bas_attachment_source_model_name",
+            str(getattr(item_model, "name", "") or ""),
+        )
         setattr(item_root, "_gr_bas_attachment_source_model_ref", item_model)
     except Exception:
         pass
@@ -185,12 +209,22 @@ def build_bas_preview_model(
     attachment_models: dict[str, Any] | None = None,
     attachment_transforms: dict[str, dict[str, Any]] | None = None,
     name: str = "",
+    skip_unsupported: bool = False,
 ) -> Any:
-    """Build a copied body preview with BAS attachment layers."""
+    """Build a copied body preview with BAS attachment layers.
+
+    Stock UTC inventories sometimes contain engine-only equipment for creatures
+    whose model has no matching visual socket (for example a turret carrying a
+    blaster item but no ``rhand`` node).  Canonical-character workflows may set
+    ``skip_unsupported`` so those inventory records remain in preset metadata
+    without making the otherwise valid character impossible to preview.  The
+    default remains strict for manually authored BAS compositions.
+    """
     preview = copy.deepcopy(body_model)
     reset_bas_model_node_traversal(preview)
     attachment_models = attachment_models or {}
     attachment_transforms = attachment_transforms or {}
+    skipped: list[dict[str, str]] = []
     for slot in BAS_ATTACHMENT_SLOTS:
         item = attachment_models.get(slot)
         if item is None:
@@ -203,7 +237,21 @@ def build_bas_preview_model(
             slot=slot,
             transform=attachment_transforms.get(slot),
         ):
+            if skip_unsupported:
+                skipped.append(
+                    {
+                        "slot": slot,
+                        "socket": socket,
+                        "resref": str(
+                            getattr(item, "_gr_source_resref", "")
+                            or getattr(item, "name", "")
+                            or slot
+                        ),
+                    }
+                )
+                continue
             raise ValueError(f"{slot} attachment failed: body has no {socket} socket.")
+    setattr(preview, "_gr_bas_skipped_attachments", tuple(skipped))
     if name:
         try:
             preview.name = str(name)
@@ -253,7 +301,29 @@ def prepare_bas_composed_export_model(
     renamed: list[dict[str, str]] = []
     duplicate_body_names: list[str] = []
 
-    attachment_roots = {id(root): root for root in (_layer_root(node) for node in attachment_nodes) if root is not None}
+    attachment_roots = {
+        id(root): root
+        for root in (_layer_root(node) for node in attachment_nodes)
+        if root is not None
+    }
+    # Keep detachable head skins animated.  The face shell and its rigid
+    # eyes/lids/teeth share the head model's helper-node frame.  Stripping the
+    # shell's skin palette freezes the face at the attachment root while those
+    # rigid parts continue to follow ``head_g`` and facial controllers; the
+    # very first locomotion frame then separates them.  The glTF writer owns a
+    # per-mesh Odyssey bind palette, so retaining the source skin is the only
+    # representation that preserves both rest registration and animation.
+    animated_head_geometry: list[str] = []
+    for root in attachment_roots.values():
+        slot = str(getattr(root, "_gr_bas_attachment_slot", "") or "").casefold()
+        if slot != "head":
+            continue
+        for child in list(getattr(root, "children", []) or []):
+            if not bool(getattr(child, "vertices", None)) or not bool(
+                getattr(child, "is_skin", False)
+            ):
+                continue
+            animated_head_geometry.append(str(getattr(child, "name", "") or "head"))
     # Some full-body/NPC MDLs carry a hidden copy of their compatible head's
     # rigid inner geometry (eyes, lids, and teeth). Once BAS supplies the real
     # head, exporting both copies creates the detached second face reported by
@@ -262,9 +332,7 @@ def prepare_bas_composed_export_model(
     head_replacement_names = {
         str(getattr(node, "name", "") or "").casefold()
         for node in attachment_nodes
-        if str(
-            getattr(_layer_root(node), "_gr_bas_attachment_slot", "") or ""
-        ).casefold() == "head"
+        if str(getattr(_layer_root(node), "_gr_bas_attachment_slot", "") or "").casefold() == "head"
         and bool(getattr(node, "vertices", None))
     }
     suppressed_body_geometry: list[str] = []
@@ -340,8 +408,7 @@ def prepare_bas_composed_export_model(
     if duplicate_attachment_names:
         duplicates = ", ".join(sorted(set(duplicate_attachment_names), key=str.lower))
         raise ValueError(
-            "Cannot safely combine an attachment with duplicate node names: "
-            f"{duplicates}."
+            f"Cannot safely combine an attachment with duplicate node names: {duplicates}."
         )
 
     for node in attachment_nodes:
@@ -357,14 +424,16 @@ def prepare_bas_composed_export_model(
         used.add(replacement.lower())
         if root is not None:
             rename_by_layer.setdefault(id(root), {})[original_key] = replacement
-        renamed.append({
-            "from": original,
-            "to": replacement,
-            "slot": slot or "attachment",
-            "source_model": str(
-                getattr(root, "_gr_bas_attachment_source_model_name", "") or ""
-            ),
-        })
+        renamed.append(
+            {
+                "from": original,
+                "to": replacement,
+                "slot": slot or "attachment",
+                "source_model": str(
+                    getattr(root, "_gr_bas_attachment_source_model_name", "") or ""
+                ),
+            }
+        )
 
     for node in attachment_nodes:
         root = _layer_root(node)
@@ -377,18 +446,22 @@ def prepare_bas_composed_export_model(
     attachment_layers = []
     for root in attachment_roots.values():
         layer_key = id(root)
-        attachment_layers.append({
-            "slot": str(getattr(root, "_gr_bas_attachment_slot", "") or "attachment"),
-            "source_model": str(
-                getattr(root, "_gr_bas_attachment_source_model_name", "") or ""
-            ),
-            "renamed_nodes": dict(rename_by_layer.get(layer_key, {})),
-        })
+        attachment_layers.append(
+            {
+                "slot": str(getattr(root, "_gr_bas_attachment_slot", "") or "attachment"),
+                "source_model": str(
+                    getattr(root, "_gr_bas_attachment_source_model_name", "") or ""
+                ),
+                "renamed_nodes": dict(rename_by_layer.get(layer_key, {})),
+            }
+        )
     report = {
         "node_count": len(nodes),
         "renamed_count": len(renamed),
         "renamed": renamed,
         "attachment_layers": attachment_layers,
+        "rigid_head_geometry": [],
+        "animated_head_geometry": animated_head_geometry,
         "suppressed_body_geometry": suppressed_body_geometry,
         "duplicate_body_names": duplicate_body_names,
         "unique_names": len(final_names) == len(set(final_names)),

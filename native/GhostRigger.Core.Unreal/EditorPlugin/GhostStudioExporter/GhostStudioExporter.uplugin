@@ -1,0 +1,15 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Ghost Studio Level Exporter",
+  "Description": "Read-only static level snapshots and compatibility reports for Ghost Studio.",
+  "Category": "Editor",
+  "CanContainContent": true,
+  "EnabledByDefault": false,
+  "Plugins": [
+    {"Name": "PythonScriptPlugin", "Enabled": true},
+    {"Name": "EditorScriptingUtilities", "Enabled": true},
+    {"Name": "ProceduralMeshComponent", "Enabled": true}
+  ]
+}

@@ -128,6 +128,10 @@ _TEXTURE_ALIASES: Dict[str, Tuple[str, ...]] = {
     # TSL's c_drexlf.mdl references c_drex01, but the shipped texture pack
     # stores the diffuse as c_drexl01.
     'c_drex01': ('c_drexl01',),
+    # The common HQ-blaster override patches the assassin/war droid models to
+    # request x_rptnblstr_001. A partial install can leave only its TXI while
+    # K2's canonical repeating-blaster diffuse remains available under w_.
+    'x_rptnblstr_001': ('w_rptnblstr_001',),
 }
 
 

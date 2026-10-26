@@ -31,6 +31,9 @@ class KMapSerializer:
             data = json.loads(source.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid KMAP JSON: {exc}") from exc
+        if data.get("unreal_source"):
+            from src.io.unreal_kmap_storage import hydrate_unreal_document
+            data = hydrate_unreal_document(data, source)
         project = cls.from_dict(data)
         project.path = str(source)
         project.dirty = False
@@ -42,7 +45,15 @@ class KMapSerializer:
         if not target:
             raise ValueError("No KMAP output path was provided.")
         target.parent.mkdir(parents=True, exist_ok=True)
-        project.modified_at = utc_now_iso()
+        modified_at = utc_now_iso()
+        if project.extra_sections.get("unreal_source"):
+            from src.io.unreal_kmap_storage import persist_unreal_document
+            document = cls.to_dict(project)
+            document["project"]["modified_at"] = modified_at
+            persist_unreal_document(document, target, project.path)
+            project.modified_at, project.path, project.dirty = modified_at, str(target), False
+            return
+        project.modified_at = modified_at
         target.write_text(json.dumps(cls.to_dict(project), indent=2, sort_keys=True) + "\n", encoding="utf-8")
         project.path = str(target)
         project.dirty = False

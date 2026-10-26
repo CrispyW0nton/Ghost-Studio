@@ -30,6 +30,30 @@ EXPECTED_TOOL_NAMES = [
 ]
 
 
+def test_protocol_metadata_does_not_break_catalog_or_expand_tool_authority():
+    calls = []
+    class Client:
+        def call(self, name, arguments):
+            calls.append((name, arguments))
+            raise spatial_mcp.SpatialAdapterError("ghoststudio-unavailable")
+    server = spatial_mcp.GhostStudioSpatialMcpServer(client_factory=Client)
+    response = server.dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/list",
+                                "params": {"_meta": {"progressToken": 1, "com.example/trace": "fixture"}}})
+    assert [t["name"] for t in response["result"]["tools"]] == EXPECTED_TOOL_NAMES
+    response = server.dispatch({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                                "params": {"name": "ghoststudio_health", "arguments": {},
+                                           "_meta": {"authorization": "not-native-authority"}}})
+    assert calls == [("ghoststudio_health", {})]
+    assert response["result"]["isError"] is True
+    for invalid in ({"_meta": None}, {"_meta": []}, {"unexpected": "field"}):
+        response = server.dispatch({"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": invalid})
+        assert response["error"]["code"] == -32602
+    response = server.dispatch({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                                "params": {"name": "ghoststudio_capture", "arguments": {"captureId": "../outside"}, "_meta": {}}})
+    assert response["result"]["isError"] is True
+    assert calls == [("ghoststudio_health", {})]
+
+
 def test_catalog_is_exact_and_does_not_require_a_live_session() -> None:
     response = spatial_mcp.GhostStudioSpatialMcpServer().dispatch(
         {

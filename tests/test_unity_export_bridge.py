@@ -650,6 +650,89 @@ def test_fbx_export_root_skin_influence_is_limb_node(tmp_path):
     assert '"NodeAttribute::c_rancorS", "LimbNode"' in text
 
 
+def test_fbx_export_keeps_every_cluster_ancestor_in_the_skeleton_chain(tmp_path):
+    root = ModelNode(name="creature_root", flags=int(NodeFlags.HEADER))
+    cutscene = ModelNode(
+        name="cutscenedummy",
+        flags=int(NodeFlags.HEADER),
+        parent=root,
+    )
+    rig_root = ModelNode(
+        name="rootdummy",
+        flags=int(NodeFlags.HEADER),
+        parent=cutscene,
+    )
+    wing = ModelNode(
+        name="wing_bone",
+        flags=int(NodeFlags.MESH),
+        parent=rig_root,
+        render=False,
+    )
+    skin = ModelNode(
+        name="creature_skin",
+        flags=int(NodeFlags.MESH | NodeFlags.SKIN),
+        parent=root,
+        vertices=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        faces=[(0, 1, 2)],
+        texture="creature",
+        bone_map=["wing_bone"],
+        skin_data=[
+            VertexSkinData([BoneWeight(0, 1.0)]),
+            VertexSkinData([BoneWeight(0, 1.0)]),
+            VertexSkinData([BoneWeight(0, 1.0)]),
+        ],
+    )
+    root.children.extend([skin, cutscene])
+    cutscene.children.append(rig_root)
+    rig_root.children.append(wing)
+    model = KotorModel(name="cluster_ancestor_case", root_node=root)
+    out_path = tmp_path / "cluster_ancestor_case.fbx"
+
+    assert FBXExporter()._export_fbx_ascii(
+        model,
+        str(out_path),
+        compatibility_profile="unreal",
+    )
+    text = out_path.read_text(encoding="utf-8")
+
+    for node_name in ("creature_root", "cutscenedummy", "rootdummy", "wing_bone"):
+        assert f'"Model::{node_name}", "LimbNode"' in text
+
+    assert text.index("Connections:  {") < text.index("Takes:  {")
+
+
+def test_rigging_sidecars_publish_coordinate_and_animation_semantics(tmp_path):
+    import json
+    from converters.mesh_converter import _export_rigging_data
+
+    root = ModelNode(name="creature_root", flags=int(NodeFlags.HEADER))
+    model = KotorModel(name="semantic_creature", root_node=root)
+    model.anim_scale = 1.75
+    model.animations = [
+        SimpleNamespace(
+            name="idle",
+            length=1.0,
+            transition_time=0.25,
+            anim_root="creature_root",
+            events=[],
+            nodes=[SimpleNamespace(name="creature_root", controllers=[])],
+        )
+    ]
+
+    assert _export_rigging_data(model, tmp_path) == 2
+    rig_dir = tmp_path / "rigging"
+    skeleton = json.loads((rig_dir / "semantic_creature.skeleton.json").read_text())
+    animation = json.loads((rig_dir / "semantic_creature.idle.anim.json").read_text())
+
+    assert skeleton["schema"] == "ghostrigger.kotor.rigging.v2"
+    assert skeleton["animation_scale"] == 1.75
+    assert skeleton["coordinate_system"]["linear_unit"] == "meter"
+    assert animation["schema"] == "ghostrigger.kotor.animation.v2"
+    assert animation["animation_scale"] == 1.75
+    assert animation["position_controller_semantics"] == "bind_plus_scaled_delta"
+    assert animation["rotation_controller_semantics"] == "absolute_local_quaternion_xyzw"
+
+
 def test_fbx_export_scales_tiny_finger_bone_display_size(tmp_path):
     root = ModelNode(name="root", flags=int(NodeFlags.HEADER))
     hand = ModelNode(name="Ran_handR", flags=int(NodeFlags.HEADER), parent=root, position=(1.0, 0.0, 0.0))
@@ -1795,6 +1878,77 @@ def test_installation_texture_cache_decodes_tga_and_reports_resolution():
     }
 
 
+def test_installation_model_locator_returns_mdx_companion_bytes():
+    from kotormcp.adapters import InstallationModelLocator
+
+    requests = []
+    resources = {
+        "mdl": SimpleNamespace(data=b"mdl-bytes"),
+        "mdx": SimpleNamespace(data=b"mdx-vertex-stream"),
+    }
+    installation = SimpleNamespace(
+        get_resource=lambda resref, restype: (
+            requests.append((resref, restype)) or resources.get(restype)
+        )
+    )
+    registry = SimpleNamespace(
+        resolve=lambda game: "K1",
+        load=lambda game, explicit_path: installation,
+    )
+
+    label, mdl, mdx = InstallationModelLocator(registry).locate("c_brith", "k1")
+
+    assert label == "installation:c_brith.mdl"
+    assert mdl == b"mdl-bytes"
+    assert mdx == b"mdx-vertex-stream"
+    assert requests == [("c_brith", "mdl"), ("c_brith", "mdx")]
+
+
+def test_fbx_export_blocks_skin_mesh_without_vertex_weight_rows(tmp_path):
+    model = KotorModel(name="broken_creature")
+    root = ModelNode(name="broken_creature", flags=int(NodeFlags.HEADER))
+    skin = ModelNode(
+        name="body_skin",
+        flags=int(NodeFlags.HEADER | NodeFlags.MESH | NodeFlags.SKIN),
+        parent=root,
+        vertices=[(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)],
+        faces=[(0, 1, 2)],
+    )
+    skin.bone_map = ["broken_creature"]
+    skin.skin_data = []
+    root.children = [skin]
+    model.root_node = root
+    output = tmp_path / "broken_creature.fbx"
+
+    assert FBXExporter().export(
+        model,
+        str(output),
+        compatibility_profile="unreal",
+    ) is False
+    assert output.exists() is False
+
+
+def test_fbx_manifest_marks_missing_skin_rows_as_invalid():
+    from src.core.export.kotor_fbx_manifest import _skin_summary, _validation_summary
+
+    skin = ModelNode(
+        name="body_skin",
+        flags=int(NodeFlags.HEADER | NodeFlags.MESH | NodeFlags.SKIN),
+        vertices=[(0.0, 0.0, 0.0)],
+    )
+    skin.bone_map = ["root"]
+    skin.skin_data = []
+    summary = _skin_summary([skin], {"root"})
+    validation = _validation_summary({"skeleton": {"skin": summary}, "fbx": {}})
+
+    assert summary["skin_meshes"][0]["vertex_count"] == 1
+    assert summary["skin_meshes"][0]["vertex_rows"] == 0
+    assert validation["ok"] is False
+    assert {row["code"] for row in validation["errors"]} == {
+        "skin_vertex_row_mismatch",
+    }
+
+
 def test_mcp_unreal_export_materializes_only_selected_animation_sets(monkeypatch):
     out_root = Path(".pytest_tmp_unity_bridge") / "UnrealSelectedAnimations"
     exported = {}
@@ -1826,6 +1980,16 @@ def test_mcp_unreal_export_materializes_only_selected_animation_sets(monkeypatch
         texture_dir = out_path.parent / "textures"
         texture_dir.mkdir(parents=True, exist_ok=True)
         (texture_dir / "LEH_hull.png").write_bytes(b"png")
+        out_path.with_suffix(".pbr.json").write_text(
+            json.dumps({
+                "materials": [{
+                    "channels": {
+                        "base_color": {"path": "textures/LEH_hull.png"},
+                    },
+                }],
+            }),
+            encoding="utf-8",
+        )
         return True
 
     services = SimpleNamespace(

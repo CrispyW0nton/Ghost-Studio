@@ -214,6 +214,7 @@ class HeadGameRecordPatch:
     portrait_resref: str = ""
     portrait_donor_resref: str = ""
     head_texture_columns: Mapping[str, str] = field(default_factory=dict)
+    portrait_texture_columns: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         game = str(self.game or "").strip().upper()
@@ -280,6 +281,25 @@ class HeadGameRecordPatch:
             if str(value or "").strip()
         }
         object.__setattr__(self, "head_texture_columns", cleaned)
+        portrait_columns = {
+            str(column): _safe_resref(
+                str(value),
+                label=f"Portrait texture column {column}",
+            )
+            for column, value in dict(
+                self.portrait_texture_columns or {}
+            ).items()
+            if str(value or "").strip()
+        }
+        if portrait_columns and not portrait:
+            raise HeadGameRecordError(
+                "Portrait texture columns require a custom portrait"
+            )
+        object.__setattr__(
+            self,
+            "portrait_texture_columns",
+            portrait_columns,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -295,6 +315,9 @@ class HeadGameRecordPatch:
             "portrait_donor_resref": self.portrait_donor_resref,
             "head_texture_columns": dict(
                 sorted(self.head_texture_columns.items())
+            ),
+            "portrait_texture_columns": dict(
+                sorted(self.portrait_texture_columns.items())
             ),
         }
 
@@ -332,6 +355,9 @@ class HeadGameRecordPatch:
             ),
             head_texture_columns=dict(
                 payload.get("head_texture_columns") or {}
+            ),
+            portrait_texture_columns=dict(
+                payload.get("portrait_texture_columns") or {}
             ),
         )
 
@@ -383,7 +409,24 @@ def merge_head_game_records(
     )
 
     head_column = _header(heads, "head")
-    alttexture_column = _header(heads, "alttexture")
+    # K2 has an explicit alttexture column; retail K1 does not.  K1 resolves
+    # the neutral texture from the head ResRef and its headtex* transition
+    # columns, so requiring K2's column incorrectly blocks every K1 package.
+    alttexture_column = _optional_header(heads, "alttexture")
+    if patch.game == "K2" and not alttexture_column:
+        raise HeadGameRecordError(
+            "K2 heads.2da requires the alttexture column"
+        )
+    if (
+        patch.game == "K1"
+        and not alttexture_column
+        and patch.texture_resref.casefold()
+        != patch.output_head_resref.casefold()
+    ):
+        raise HeadGameRecordError(
+            "K1 heads.2da without alttexture requires the head and texture "
+            "ResRefs to match"
+        )
     donor_head_row = _one_match(
         heads,
         column=head_column,
@@ -442,10 +485,9 @@ def merge_head_game_records(
         raise HeadGameRecordError(
             "Live heads.2da contains duplicate rows for the output head"
         )
-    head_updates = {
-        head_column: patch.output_head_resref,
-        alttexture_column: patch.texture_resref,
-    }
+    head_updates = {head_column: patch.output_head_resref}
+    if alttexture_column:
+        head_updates[alttexture_column] = patch.texture_resref
     for requested_column, value in patch.head_texture_columns.items():
         actual_column = _header(heads, requested_column)
         head_updates[actual_column] = value
@@ -507,6 +549,7 @@ def merge_head_game_records(
         portraits.get_height() if portraits is not None else 0
     )
     portrait_updates: dict[str, str] = {}
+    added_portrait_columns: set[str] = set()
     donor_portrait_row = -1
     if patch.portrait_resref:
         if portraits is None:
@@ -521,6 +564,24 @@ def merge_head_game_records(
             description="selected donor portrait",
         )
         portrait_updates[base_column] = patch.portrait_resref
+        for requested_column, value in patch.portrait_texture_columns.items():
+            actual_column = _optional_header(portraits, requested_column)
+            if not actual_column:
+                # K1's retail portraits.2da predates light-side portrait
+                # variants.  Runtime patches can opt into BaseResRefG/VG, so
+                # custom packages must be able to add those explicit columns
+                # without weakening the required stock/dark-side schema.
+                if (
+                    patch.game == "K1"
+                    and requested_column.casefold()
+                    in {"baseresrefg", "baseresrefvg"}
+                ):
+                    portraits.add_column(requested_column)
+                    actual_column = requested_column
+                    added_portrait_columns.add(actual_column)
+                else:
+                    actual_column = _header(portraits, requested_column)
+            portrait_updates[actual_column] = value
         for requested in (
             "appearancenumber",
             "appearance_s",
@@ -543,10 +604,24 @@ def merge_head_game_records(
             _require_exact_owned_row(
                 portraits,
                 portraits_row,
-                portrait_updates,
+                {
+                    column: value
+                    for column, value in portrait_updates.items()
+                    if column not in added_portrait_columns
+                },
                 description="Custom portrait row",
             )
-            portraits_action = "reuse_exact"
+            for column in added_portrait_columns:
+                portraits.set_cell(
+                    portraits_row,
+                    column,
+                    portrait_updates[column],
+                )
+            portraits_action = (
+                "upgrade_additive_columns"
+                if added_portrait_columns
+                else "reuse_exact"
+            )
         else:
             portraits_row = portraits.copy_row(
                 portraits.get_row(donor_portrait_row),

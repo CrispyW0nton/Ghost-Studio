@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -66,6 +67,29 @@ def _heads() -> bytes:
     )
 
 
+def _heads_k1() -> bytes:
+    return _table(
+        [
+            "head",
+            "headtexvvve",
+            "headtexvve",
+            "headtexve",
+            "headtexe",
+            "headtexg",
+            "headtexvg",
+        ],
+        [
+            {
+                "head": "PMHA04",
+                "headtexvvve": "PMHA04D",
+                "headtexvve": "PMHA04D3",
+                "headtexve": "PMHA04D2",
+                "headtexe": "PMHA04D1",
+            }
+        ],
+    )
+
+
 def _appearance() -> bytes:
     return _table(
         [
@@ -106,6 +130,10 @@ def _portraits() -> bytes:
             "appearance_s",
             "appearance_l",
             "forpc",
+            "baseresrefe",
+            "baseresrefve",
+            "baseresrefvve",
+            "baseresrefvvve",
         ],
         [
             {
@@ -115,6 +143,10 @@ def _portraits() -> bytes:
                 "appearance_s": "0",
                 "appearance_l": "0",
                 "forpc": "1",
+                "baseresrefe": "po_pfha04d1",
+                "baseresrefve": "po_pfha04d2",
+                "baseresrefvve": "po_pfha04d3",
+                "baseresrefvvve": "po_pfha04d",
             }
         ],
     )
@@ -267,6 +299,205 @@ def test_optional_portrait_links_dynamic_appearance_row() -> None:
     assert portraits.get_cell(1, "appearancenumber") == "2"
     assert portraits.get_cell(1, "appearance_s") == "2"
     assert portraits.get_cell(1, "appearance_l") == "2"
+
+
+def test_optional_portrait_alignment_columns_are_explicitly_overridden() -> None:
+    base = _patch(portrait=True)
+    patch = replace(
+        base,
+        portrait_texture_columns={
+            "baseresrefe": "po_cdh01d1",
+            "baseresrefve": "po_cdh01d2",
+            "baseresrefvve": "po_cdh01d3",
+            "baseresrefvvve": "po_cdh01d",
+        },
+    )
+    result = merge_head_game_records(
+        patch,
+        heads_bytes=_heads(),
+        appearance_bytes=_appearance(),
+        portraits_bytes=_portraits(),
+    )
+    portraits = read_2da(result.portraits_bytes)
+    assert portraits.get_cell(result.portraits_row, "baseresrefe") == "po_cdh01d1"
+    assert portraits.get_cell(result.portraits_row, "baseresrefve") == "po_cdh01d2"
+    assert portraits.get_cell(result.portraits_row, "baseresrefvve") == "po_cdh01d3"
+    assert portraits.get_cell(result.portraits_row, "baseresrefvvve") == "po_cdh01d"
+
+
+def test_k1_portrait_merge_adds_requested_light_side_columns() -> None:
+    patch = HeadGameRecordPatch(
+        game="K1",
+        output_head_resref="P_KNEOH",
+        texture_resref="P_KNEOH",
+        donor_head_resref="PMHA04",
+        body_resref="PMBAM",
+        appearance_donor_label="P_MAL_A_MED_04",
+        appearance_label="GhostStudio_P_KNEOH",
+        portrait_resref="po_kneo",
+        portrait_donor_resref="po_pfha04",
+        portrait_texture_columns={
+            "baseresrefg": "po_kneoL",
+            "baseresrefvg": "po_kneoL",
+        },
+    )
+    appearance = _table(
+        ["label", "normalhead", "modela", "portrait"],
+        [{
+            "label": "P_MAL_A_MED_04",
+            "normalhead": "0",
+            "modela": "PMBAM",
+            "portrait": "",
+        }],
+    )
+
+    result = merge_head_game_records(
+        patch,
+        heads_bytes=_heads_k1(),
+        appearance_bytes=appearance,
+        portraits_bytes=_portraits(),
+    )
+
+    portraits = read_2da(result.portraits_bytes)
+    assert "baseresrefg" in portraits.get_headers()
+    assert "baseresrefvg" in portraits.get_headers()
+    assert portraits.get_cell(result.portraits_row, "baseresrefg") == "po_kneoL"
+    assert portraits.get_cell(result.portraits_row, "baseresrefvg") == "po_kneoL"
+
+    upgraded = merge_head_game_records(
+        patch,
+        heads_bytes=result.heads_bytes,
+        appearance_bytes=result.appearance_bytes,
+        portraits_bytes=result.portraits_bytes,
+    )
+    assert upgraded.report["rows"]["portraits"]["action"] == "reuse_exact"
+    assert upgraded.portraits_bytes == result.portraits_bytes
+
+
+def test_k1_existing_owned_portrait_can_add_only_new_light_columns() -> None:
+    first = HeadGameRecordPatch(
+        game="K1",
+        output_head_resref="P_KNEOH",
+        texture_resref="P_KNEOH",
+        donor_head_resref="PMHA04",
+        body_resref="PMBAM",
+        appearance_donor_label="P_MAL_A_MED_04",
+        appearance_label="GhostStudio_P_KNEOH",
+        portrait_resref="po_kneo",
+        portrait_donor_resref="po_pfha04",
+    )
+    appearance = _table(
+        ["label", "normalhead", "modela", "portrait"],
+        [{
+            "label": "P_MAL_A_MED_04",
+            "normalhead": "0",
+            "modela": "PMBAM",
+            "portrait": "",
+        }],
+    )
+    installed = merge_head_game_records(
+        first,
+        heads_bytes=_heads_k1(),
+        appearance_bytes=appearance,
+        portraits_bytes=_portraits(),
+    )
+    upgrade = replace(
+        first,
+        portrait_texture_columns={
+            "baseresrefg": "po_kneoL",
+            "baseresrefvg": "po_kneoL",
+        },
+    )
+
+    result = merge_head_game_records(
+        upgrade,
+        heads_bytes=installed.heads_bytes,
+        appearance_bytes=installed.appearance_bytes,
+        portraits_bytes=installed.portraits_bytes,
+    )
+
+    assert result.report["rows"]["portraits"]["action"] == "upgrade_additive_columns"
+    portraits = read_2da(result.portraits_bytes)
+    assert portraits.get_cell(result.portraits_row, "baseresrefg") == "po_kneoL"
+    assert portraits.get_cell(result.portraits_row, "baseresrefvg") == "po_kneoL"
+
+
+def test_k1_heads_without_alttexture_can_append_a_custom_head() -> None:
+    patch = HeadGameRecordPatch(
+        game="K1",
+        output_head_resref="P_KNEOH",
+        texture_resref="P_KNEOH",
+        donor_head_resref="PMHA04",
+        body_resref="PMBAM",
+        appearance_donor_label="P_MAL_A_MED_04",
+        appearance_label="GhostStudio_P_KNEOH",
+        head_texture_columns={
+            "headtexe": "P_KNEOH",
+            "headtexve": "P_KNEOH",
+            "headtexvve": "P_KNEOH",
+            "headtexvvve": "P_KNEOH",
+        },
+    )
+    appearance = _table(
+        ["label", "normalhead", "modela", "texa"],
+        [
+            {
+                "label": "P_MAL_A_MED_04",
+                "normalhead": "0",
+                "modela": "PMBAM",
+                "texa": "PMBAL",
+            }
+        ],
+    )
+
+    result = merge_head_game_records(
+        patch,
+        heads_bytes=_heads_k1(),
+        appearance_bytes=appearance,
+    )
+
+    assert result.accepted
+    heads = read_2da(result.heads_bytes)
+    assert "alttexture" not in heads.get_headers()
+    assert heads.get_cell(result.heads_row, "head") == "P_KNEOH"
+    assert heads.get_cell(result.heads_row, "headtexe") == "P_KNEOH"
+
+
+def test_missing_alttexture_is_rejected_when_the_game_contract_requires_it() -> None:
+    appearance = _table(
+        ["label", "normalhead", "modela", "texa"],
+        [
+            {
+                "label": "P_MAL_A_MED_04",
+                "normalhead": "0",
+                "modela": "PMBAM",
+                "texa": "PMBAL",
+            }
+        ],
+    )
+    k1_patch = HeadGameRecordPatch(
+        game="K1",
+        output_head_resref="P_KNEOH",
+        texture_resref="P_OTHER",
+        donor_head_resref="PMHA04",
+        body_resref="PMBAM",
+        appearance_donor_label="P_MAL_A_MED_04",
+        appearance_label="GhostStudio_P_KNEOH",
+    )
+    with pytest.raises(HeadGameRecordError, match="ResRefs to match"):
+        merge_head_game_records(
+            k1_patch,
+            heads_bytes=_heads_k1(),
+            appearance_bytes=appearance,
+        )
+
+    k2_patch = replace(_patch(), game="K2")
+    with pytest.raises(HeadGameRecordError, match="requires the alttexture"):
+        merge_head_game_records(
+            k2_patch,
+            heads_bytes=_heads_k1(),
+            appearance_bytes=_appearance(),
+        )
 
 
 def test_package_contains_verified_runtime_merge_metadata_and_tslpatcher(

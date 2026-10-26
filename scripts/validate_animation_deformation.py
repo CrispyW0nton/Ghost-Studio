@@ -37,6 +37,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.08,
         help="Fail if any sampled triangle edge falls below this bind-length ratio.",
     )
+    parser.add_argument(
+        "--max-floor-penetration",
+        type=float,
+        default=0.015,
+        help="Fail if any sampled skinned vertex moves this far below the bind floor.",
+    )
     parser.add_argument("--output", required=True, type=Path)
     return parser
 
@@ -49,6 +55,8 @@ def main() -> int:
         raise SystemExit("--max-edge-stretch must be greater than 1")
     if not 0.0 < args.min_edge_ratio < 1.0:
         raise SystemExit("--min-edge-ratio must be between 0 and 1")
+    if args.max_floor_penetration < 0.0:
+        raise SystemExit("--max-floor-penetration cannot be negative")
 
     loader = ViewportValidator(output_dir=args.output.parent / ".deformation_loader")
     model = loader._load_mdl(
@@ -68,6 +76,7 @@ def main() -> int:
 
     worst_stretch = max(report.samples, key=lambda sample: sample.max_edge_stretch)
     worst_collapse = min(report.samples, key=lambda sample: sample.min_edge_ratio)
+    worst_floor = max(report.samples, key=lambda sample: sample.floor_penetration)
     hard_failures: list[str] = []
     if worst_stretch.max_edge_stretch > args.max_edge_stretch:
         hard_failures.append(
@@ -81,6 +90,12 @@ def main() -> int:
             f"{worst_collapse.min_edge_ratio:.6f} < {args.min_edge_ratio:.6f} "
             f"at {worst_collapse.time:.6f}s"
         )
+    if worst_floor.floor_penetration > args.max_floor_penetration:
+        hard_failures.append(
+            "max_floor_penetration "
+            f"{worst_floor.floor_penetration:.6f} > "
+            f"{args.max_floor_penetration:.6f} at {worst_floor.time:.6f}s"
+        )
 
     accepted = report.ok and not hard_failures
     payload = {
@@ -91,12 +106,15 @@ def main() -> int:
         "thresholds": {
             "max_edge_stretch": args.max_edge_stretch,
             "min_edge_ratio": args.min_edge_ratio,
+            "max_floor_penetration": args.max_floor_penetration,
         },
         "extrema": {
             "max_edge_stretch": worst_stretch.max_edge_stretch,
             "max_edge_stretch_time": worst_stretch.time,
             "min_edge_ratio": worst_collapse.min_edge_ratio,
             "min_edge_ratio_time": worst_collapse.time,
+            "max_floor_penetration": worst_floor.floor_penetration,
+            "max_floor_penetration_time": worst_floor.time,
         },
         "hard_failures": hard_failures,
         "validator": report.to_dict(),

@@ -3,7 +3,8 @@
 Archive writes use PyKotor and are accepted only after byte-for-byte resource
 readback.  Override deployment is deliberately split into two operations:
 ``stage_override`` writes an ordinary build folder, while ``install_override``
-is the only API in this module that may write beneath a game installation.
+(and its compare-and-swap undo, ``restore_override_file``) are the only APIs in
+this module that may write beneath a game installation's Override folder.
 Existing Override resources are never replaced unless the caller explicitly
 selects the backup policy.
 """
@@ -198,6 +199,42 @@ class OverrideInstallResult:
     @property
     def ok(self) -> bool:
         return self.committed and not any(row.blocking for row in self.issues)
+
+
+@dataclass(frozen=True)
+class OverrideRestoreResult:
+    """Receipt for undoing one Override install (prior bytes back, or removal)."""
+
+    game_root: str
+    filename: str
+    action: str = ""
+    restored_sha256: str = ""
+    pre_restore_sha256: str = ""
+    backup_path: str = ""
+    receipt_path: str = ""
+    issues: tuple[NarrativePackageIssue, ...] = ()
+    committed: bool = False
+
+    @property
+    def ok(self) -> bool:
+        return self.committed and not any(row.blocking for row in self.issues)
+
+
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _external_backup_root(backup_root: str | Path, game_root: Path) -> Path:
+    """An existing, non-linked folder outside (and not containing) the game root."""
+
+    requested = Path(backup_root)
+    if not requested.is_absolute():
+        raise ValueError("backup_root must be an absolute path.")
+    external = requested.resolve(strict=True)
+    if not external.is_dir() or requested.is_symlink() or external.is_symlink():
+        raise ValueError("backup_root must be an existing safe directory.")
+    if external == game_root or game_root in external.parents or external in game_root.parents:
+        raise ValueError("backup_root and the game root must be separate directory trees.")
+    return external
 
 
 @dataclass(frozen=True)
@@ -698,31 +735,66 @@ class NarrativePackagingService:
         game_root: str | Path,
         *,
         on_conflict: str = "block",
+        backup_root: str | Path | None = None,
+        expected_existing: dict[str, str] | None = None,
     ) -> OverrideInstallResult:
-        """Explicitly install a verified stage, backing up conflicts on request."""
+        """Explicitly install a verified stage, backing up conflicts on request.
+
+        ``backup_root`` (optional) moves the install transaction, conflict
+        backups and receipt out of the game root into an existing folder of a
+        separate tree; the game root then only gains the Override files.
+        ``expected_existing`` (optional) maps filenames to ``"absent"`` or the
+        SHA-256 the current Override file must have (compare-and-swap against a
+        caller's preview); any mismatch refuses the install before writing.
+        """
 
         root = Path(game_root).resolve()
         policy = str(on_conflict or "block").strip().lower()
         if policy not in {"block", "backup"}:
             raise ValueError("Override conflict policy must be 'block' or 'backup'.")
+        external: Path | None = None
         try:
             game, resources = _load_override_stage(stage_path)
             if not root.is_dir() or root.is_symlink():
                 raise ValueError(f"Game root is missing or unsafe: {root}")
+            if backup_root is not None:
+                external = _external_backup_root(backup_root, root)
+            expected = {
+                str(name).casefold(): str(value or "").strip().lower()
+                for name, value in dict(expected_existing or {}).items()
+            }
+            if any(value != "absent" and not _SHA256_PATTERN.fullmatch(value) for value in expected.values()):
+                raise ValueError("expected_existing values must be 'absent' or a SHA-256 hex digest.")
             override = root / "Override"
             if override.exists() and (not override.is_dir() or override.is_symlink()):
                 raise ValueError("Game Override path is not a safe directory.")
             conflicts: list[PackageResource] = []
             identical: list[str] = []
+            prior_sha256: dict[str, str] = {}
+            mismatched: list[str] = []
             for row in resources:
                 destination = override / row.filename
+                want = expected.get(row.filename.casefold())
                 if destination.exists():
                     if not destination.is_file() or destination.is_symlink():
                         raise ValueError(f"Override destination is not a safe file: {destination}")
-                    if destination.read_bytes() == row.data:
+                    current = destination.read_bytes()
+                    prior_sha256[row.filename] = _sha256(current)
+                    if want is not None and want != prior_sha256[row.filename]:
+                        mismatched.append(row.filename)
+                    elif current == row.data:
                         identical.append(row.filename)
                     else:
                         conflicts.append(row)
+                elif want not in (None, "absent"):
+                    mismatched.append(row.filename)
+            if mismatched:
+                issue = NarrativePackageIssue(
+                    "blocking",
+                    "override_install.expected_state_mismatch",
+                    "Override files changed since the caller's preview: " + ", ".join(mismatched),
+                )
+                return OverrideInstallResult(str(root), game, (), (), issues=(issue,))
             if conflicts and policy == "block":
                 issue = NarrativePackageIssue(
                     "blocking",
@@ -736,8 +808,12 @@ class NarrativePackagingService:
             return OverrideInstallResult(str(root), "", issues=(issue,))
 
         install_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + uuid4().hex[:10]
-        transaction = root / f".ghoststudio-override-install-{install_id}"
-        backup = root / "GhostStudioBackups" / install_id
+        if external is None:
+            transaction = root / f".ghoststudio-override-install-{install_id}"
+            backup = root / "GhostStudioBackups" / install_id
+        else:
+            backup = external / install_id
+            transaction = backup / ".transaction"
         installed: list[str] = []
         prior_names = {row.filename.casefold() for row in conflicts}
         try:
@@ -758,10 +834,14 @@ class NarrativePackagingService:
                 shutil.copyfile(source, saved)
                 if saved.read_bytes() != source.read_bytes():
                     raise ValueError(f"Could not verify backup for {row.filename}")
+                if _sha256(saved.read_bytes()) != prior_sha256[row.filename]:
+                    raise ValueError(f"Override destination changed during the install: {row.filename}")
             override.mkdir(parents=True, exist_ok=True)
             for row in resources:
                 if row.filename in identical:
                     continue
+                if row.filename not in prior_sha256 and (override / row.filename).exists():
+                    raise ValueError(f"Override destination appeared during the install: {row.filename}")
                 _atomic_write(override / row.filename, (incoming / row.filename).read_bytes())
                 installed.append(row.filename)
             receipt = {
@@ -773,9 +853,12 @@ class NarrativePackagingService:
                 "game_root": str(root),
                 "stage_path": str(Path(stage_path).resolve()),
                 "conflict_policy": policy,
+                "backup_location": "game_root" if external is None else "external",
                 "installed": installed,
+                "installed_sha256": {row.filename: row.sha256 for row in resources if row.filename in installed},
                 "skipped_identical": identical,
                 "backed_up": [row.filename for row in conflicts],
+                "backed_up_sha256": {row.filename: prior_sha256[row.filename] for row in conflicts},
             }
             receipt_path = backup / "install-receipt.json"
             _atomic_json(receipt_path, receipt)
@@ -809,6 +892,116 @@ class NarrativePackagingService:
             tuple(identical),
             str(backup),
             str(backup / "install-receipt.json"),
+            (),
+            True,
+        )
+
+    @staticmethod
+    def restore_override_file(
+        game_root: str | Path,
+        resref: str,
+        restype: str,
+        *,
+        expected_current_sha256: str,
+        backup_root: str | Path,
+        prior_data: bytes | bytearray | memoryview | None = None,
+    ) -> OverrideRestoreResult:
+        """Undo one Override install with a compare-and-swap guard.
+
+        The current Override file must still hold exactly the installed bytes
+        (``expected_current_sha256``); otherwise nothing is changed. Its bytes
+        are first saved (exclusively, verified) under ``backup_root``, a folder
+        outside the game root. ``prior_data`` is then written back atomically,
+        or, when it is ``None`` (the install created the file), the file is
+        removed. Any failure puts the installed bytes back.
+        """
+
+        root = Path(game_root).resolve()
+        filename = ""
+        try:
+            resource_type = _resource_type(restype)
+            filename = f"{_resref(resref)}.{resource_type.extension.lower()}"
+            if resource_type.extension.lower() in _ARCHIVE_RESOURCE_TYPES | _GLOBAL_INSTALL_RESOURCE_TYPES:
+                raise ValueError("Archive and game-global resources are not Override files.")
+            expected = str(expected_current_sha256 or "").strip().lower()
+            if not _SHA256_PATTERN.fullmatch(expected):
+                raise ValueError("expected_current_sha256 must be a SHA-256 hex digest.")
+            if not root.is_dir() or root.is_symlink():
+                raise ValueError(f"Game root is missing or unsafe: {root}")
+            external = _external_backup_root(backup_root, root)
+            override = root / "Override"
+            if not override.is_dir() or override.is_symlink():
+                raise ValueError("Game Override folder is missing or unsafe.")
+            destination = override / filename
+            if not destination.is_file() or destination.is_symlink():
+                raise ValueError(f"Override file to restore is missing or unsafe: {filename}")
+            current = destination.read_bytes()
+            if _sha256(current) != expected:
+                raise ValueError(f"Override file changed since it was installed; restore refused: {filename}")
+            prior = None if prior_data is None else bytes(prior_data)
+        except Exception as error:
+            issue = NarrativePackageIssue("blocking", "override_restore.preflight_failed", str(error))
+            return OverrideRestoreResult(str(root), filename, issues=(issue,))
+
+        restore_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + uuid4().hex[:10]
+        backup = external / f"restore-{restore_id}"
+        saved = backup / "Override" / filename
+        receipt_path = backup / "restore-receipt.json"
+        action = "removed" if prior is None else "restored"
+        try:
+            saved.parent.mkdir(parents=True, exist_ok=False)
+            with saved.open("xb") as handle:
+                handle.write(current)
+            if saved.read_bytes() != current:
+                raise ValueError("Could not verify the pre-restore backup.")
+            # Re-check just before mutating; a concurrent change is never clobbered.
+            if _sha256(destination.read_bytes()) != expected:
+                raise ValueError("Override file changed during the restore.")
+            try:
+                if prior is None:
+                    destination.unlink()
+                    if destination.exists():
+                        raise ValueError("Override file is still present after removal.")
+                else:
+                    _atomic_write(destination, prior)
+                    if destination.read_bytes() != prior:
+                        raise ValueError("Restored Override file failed exact readback.")
+                _atomic_json(
+                    receipt_path,
+                    {
+                        "file_type": "GhostStudioOverrideRestoreReceipt",
+                        "schema_version": 1,
+                        "restore_id": restore_id,
+                        "restored_at": _utc_now(),
+                        "game_root": str(root),
+                        "filename": filename,
+                        "action": action,
+                        "pre_restore_sha256": expected,
+                        "restored_sha256": "" if prior is None else _sha256(prior),
+                        "pre_restore_backup": f"Override/{filename}",
+                        "engine_proof": "not_recorded",
+                    },
+                )
+            except Exception:
+                _atomic_write(destination, current)
+                raise
+        except Exception as error:
+            issue = NarrativePackageIssue(
+                "blocking",
+                "override_restore.failed",
+                f"Override restore failed before changing the file or was rolled back: {error}",
+            )
+            return OverrideRestoreResult(
+                str(root), filename, "", "", expected, str(backup), issues=(issue,)
+            )
+        return OverrideRestoreResult(
+            str(root),
+            filename,
+            action,
+            "" if prior is None else _sha256(prior),
+            expected,
+            str(backup),
+            str(receipt_path),
             (),
             True,
         )
@@ -983,6 +1176,7 @@ __all__ = [
     "NarrativePackageResult",
     "NarrativePackagingService",
     "OverrideInstallResult",
+    "OverrideRestoreResult",
     "OverrideStageResult",
     "PackageResource",
     "inspect_gff_resource",

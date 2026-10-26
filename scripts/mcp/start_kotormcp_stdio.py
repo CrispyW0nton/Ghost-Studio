@@ -49,6 +49,11 @@ def main() -> None:
     )
     os.environ.setdefault("GHOSTRIGGER_ROOT", str(root))
 
+    # Initialize the renderer's native numeric dependency before AnyIO starts
+    # its stdio worker threads. On Windows, a first NumPy import inside a tool
+    # call can stall in extension initialization while those workers are active.
+    import numpy  # noqa: F401
+
     from kotormcp.server import main as server_main
 
     server_main(["--mode", "stdio"])

@@ -7,3 +7,4 @@ PYTHON_PAYLOAD_CORE_PROJECT_HEAD_BUILDER_REPOSITORY RCDATA "Python/src/core/proj
 PYTHON_PAYLOAD_CORE_PROJECT_PLACEABLE_ASSET RCDATA "Python/src/core/project/placeable_asset.py"
 PYTHON_PAYLOAD_CORE_PROJECT_PROJECT_VALIDATION RCDATA "Python/src/core/project/project_validation.py"
 PYTHON_PAYLOAD_CORE_PROJECT_RESOURCE_ADDRESS RCDATA "Python/src/core/project/resource_address.py"
+PYTHON_PAYLOAD_CORE_PROJECT_SECONDARY_MOTION_PROFILE RCDATA "Python/src/core/project/secondary_motion_profile.py"

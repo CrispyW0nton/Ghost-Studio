@@ -1,5 +1,55 @@
 # Python Terminal Cheatsheet
 
+## Native Unreal Import Implementation (External Shell)
+
+Creator UI source: Unreal Tools → Export Level to Ghost Studio, then Ghost Map
+Studio File → Import / Reimport Unreal Level. Save an empty KMAP first. This
+source implementation still needs actual Debug UI qualification; automatic
+Send-to-Ghost and Build & Play are not yet implemented. See
+[implementation and limits](docs/UNREAL_PIPELINE_IMPLEMENTATION.md) and the
+[native plugin setup](native/GhostRigger.Core.Unreal/EditorPlugin/GhostStudioExporter/README.md).
+
+Focused developer verification, from the repository root:
+
+```powershell
+python -m pytest -q -p no:cacheprovider tests/test_unreal_native_snapshot.py tests/test_unreal_import_state.py tests/test_unreal_map_workflow.py tests/test_unreal_pipeline_payloads.py tests/test_unreal_level_import.py tests/test_unreal_import_gpu_culling.py
+python docs/audits/2026-09-24-program-audit/reproduce.py
+```
+
+The audit command reproduces known bugs in temporary files; observed failures
+are evidence, not passing product acceptance. Unreal-backed KMAP files travel
+with their `unreal_assets` folder. Reimport preserves Ghost-owned edits and asks
+for conflicting changes; cancellation never commits a scene edit.
+
+## Unreal Static Level Import Prototype (External Shell)
+
+Run from the repository root. Native Unreal export must first produce the
+versioned bundle; a loose `.umap` only returns dependency hints. See
+[the architecture and current limits](docs/UNREAL_LEVEL_IMPORT.md).
+
+```powershell
+python scripts/import_unreal_level_bundle.py preview C:/Maps/RNVBundle/level.json
+python scripts/import_unreal_level_bundle.py build C:/Maps/RNVBundle/level.json --expected-sha256 <preview-sha256> --output C:/Maps/RNVBuildV1
+python -m pytest tests/test_unreal_level_import.py tests/test_unreal_import_gpu_culling.py -q -p no:cacheprovider
+```
+
+Build requires a new directory and does not install/warp the game. The receipt
+keeps `game_tested` false until separate retail evidence is recorded.
+The v1 importer emits one playable sector containing all static component
+surfaces. KMAP metadata retains source component identities and node mappings.
+
+## Whole-Level Export Developer Check (External Shell)
+
+Run from the repository root in an external shell with repository Python
+dependencies installed. Replace the installation/output paths. This checks two
+positioned K2 `001ebo1` room instances in FBX and OBJ and saves a KMAP fixture;
+it does not write to the game installation or replace the required live UI test.
+
+```powershell
+python scripts/verify_level_scene_export.py --k2-dir "C:/Games/Star Wars - KotOR2" --output "C:/Temp/ghost-level-export-proof"
+python -m pytest tests/test_level_fbx_export.py -q -p no:cacheprovider
+```
+
 This file records useful commands for the embedded GhostRigger Python terminal.
 When terminal helpers or practical terminal workflows are added or changed,
 update this file so future agents and users can reuse them.
@@ -656,3 +706,49 @@ The last command opens the actual Ghost Studio main-window workflow on the
 ModernGL renderer, adds PFBC09 and PMBC09 as KMAX scene objects, attaches their
 stock K2 heads through BAS, samples inherited `b11a3`, and saves side-view plus
 socket-coordinate proof without touching the game's Override directory.
+
+## Whole-level export over MCP
+
+Start the broad local server from the repository root, then reconnect the MCP
+client to refresh the tool catalog:
+
+```powershell
+python scripts/mcp/start_kotormcp_stdio.py
+python -m pytest tests/test_mcp_level_export.py tests/test_level_fbx_export.py -q
+```
+
+Call `ghoststudio_export_level` with absolute `kmap_path`, `output_path` (.fbx or
+.obj), and matching KOTOR `game_dir`. Save the KMAP first. `asset_dir` can supply
+custom resources; `overwrite: true` explicitly permits replacement of existing
+output files. See `docs/level_scene_export.md` for a complete JSON example.
+
+## KOTOR Engine Light Model And KOTOR-Linear Bake
+
+Bake the current model's lightmapped meshes with the engine's light term
+(`1/(1 + 4.5 d^2/r^2)`, multiplier ignored, no tone map, no baked diffuse,
+linear stored bytes). The game draws the result as `D x (v0 + LM)`.
+`kotor_cutoff_scale=2.0` is the reach the 003EBO pilot fitted best; `1.0` is
+the engine's candidate rule and `0` disables the cut.
+
+```python
+from src.adapters.gpu.lightmap_baker import LightmapBaker
+from src.core.lighting.lightmap_bake_job import LightmapBakeJob
+from src.core.lighting.lightmap_bake_settings import LightmapBakeSettings
+settings = LightmapBakeSettings.for_kotor_engine(resolution=256, output_directory=r"C:\Temp\kotor_lm_check", bake_visible_only=False)
+result = LightmapBaker().bake(LightmapBakeJob(model=model(), settings=settings))
+print(result.ok, result.messages, result.warnings)
+```
+
+Engine helpers (point lights only; `gidy_sun` is a point light at world
+(4000, 4500, 7000)):
+
+```python
+from src.core.lighting import kotor_engine_lighting as kel
+kel.dc1_predictions()                                   # framebuffer values DC-1 expects under each composite rule
+kel.composite_lightmapped(0.5, 0.5, 0.0, rule="additive"), kel.composite_lightmapped(0.5, 0.5, rule="x2")
+[l.name for l in kel.select_object_lights([kel.KotorEngineLight.from_record(n) for n in model().all_nodes() if getattr(n, "is_light", False)], (0.0, 0.0, 0.0))]
+```
+
+Outdoor pages for the additive rule (default stays `"x2"` until DC-1):
+`encode_kotor_pages(comps, E, res, composite="additive", runtime_v0=0.0)`; a
+point sun is `OutdoorLightingModel(sun_direction=..., sun_position=(x, y, z))`.

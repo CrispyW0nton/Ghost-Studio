@@ -1595,7 +1595,11 @@ class KotorModel:
         Visible nodes are those with:
           - UV coordinates (deformation-helper trimeshes that lack UVs are excluded)
           - A real texture name (non-null) OR are skin nodes
-          - Not ending in _g / _G (deformation-helper name pattern)
+          - An enabled MDL render flag
+
+        Helper-style ``_g`` names remain excluded unless a rigid node has the
+        explicit render flag, a real texture, and UVs.  KOTOR 2 construction
+        and mining droids use exactly that combination for visible body parts.
 
         This matches the viewport's _is_deformation_helper() rules so that the camera
         is framed exactly on the renderable geometry.
@@ -1630,19 +1634,26 @@ class KotorModel:
             # OBJ / FBX imported nodes: always renderable — skip all heuristics
             if getattr(n, '_imported', False):
                 return False
+            if getattr(n, 'render', True) is False:
+                return True
             raw = n.texture or ''
             t = raw.strip()
             for ext in ('.tga', '.tpc', '.dds', '.png'):
                 if t.lower().endswith(ext):
                     t = t[:-4]
             tex = t.strip()
-            is_null = (not tex or tex.upper() == 'NULL')
+            is_null = (not tex or tex.upper() in {'NULL', 'NONE', '****'})
 
             # Skin node with a real texture and UVs -> visible
             if n.is_skin and not is_null and n.uvs:
                 return False
 
-            # Non-skin _g / _G or _dum nodes are ALWAYS deform helpers
+            # Visible K2 droid limbs use the same _g naming convention as
+            # deformation helpers, but are explicitly authored for rendering.
+            if not n.is_skin and not is_null and n.uvs:
+                return False
+
+            # Remaining non-skin _g / _G or _dum nodes are deform helpers.
             name_lower = n.name.lower()
             if not n.is_skin and (name_lower.endswith('_g')
                                   or name_lower.endswith('_g0')

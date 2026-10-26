@@ -21,7 +21,19 @@ from src.core.game.kotor_loader import load_model_from_file
 from src.core.geometry.model_data import Animation, GameVersion, KotorModel, ModelNode
 
 
-DEFAULT_CORPUS_ROOT = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "kotor_stock"
+def _default_corpus_root() -> Path:
+    """Locate the Day 4 stock fixture corpus at the repository root.
+
+    A fixed ``parents[3]`` resolves to native/GhostRigger.Core.Workflow/Python
+    after the native split, where the fixtures do not exist.
+    """
+
+    from .skeleton_renamer import _resolve_repo_root  # noqa: PLC0415
+
+    return _resolve_repo_root() / "tests" / "fixtures" / "kotor_stock"
+
+
+DEFAULT_CORPUS_ROOT = _default_corpus_root()
 
 
 @dataclass

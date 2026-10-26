@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Validation",
-    "file_count": 11,
+    "file_count": 12,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -39,7 +39,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_VALIDATION_CUSTOM_RIGGED_CHARACTER_VALIDATOR",
             "source_path": "src/core/validation/custom_rigged_character_validator.py",
             "packaged_path": "Python/src/core/validation/custom_rigged_character_validator.py",
-            "sha256": "8cc57689c012010f32b14f0bd312096aa0429f4dd5e8c005f2f3d2c2ab48430a"
+            "sha256": "96a877e32d6a273fa25c3b7c4c98936905a3baf0678d7ee453d79d2fe553edff"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_VALIDATION_HEAD_BUILDER_PREFLIGHT",
@@ -52,6 +52,12 @@
             "source_path": "src/core/validation/kotor_module_engine_contract.py",
             "packaged_path": "Python/src/core/validation/kotor_module_engine_contract.py",
             "sha256": "ab54e04c39dcbeea4a58ef6c472981c86aefc9e036a5b721bd447745e952eb67"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_VALIDATION_SECONDARY_MOTION_VALIDATOR",
+            "source_path": "src/core/validation/secondary_motion_validator.py",
+            "packaged_path": "Python/src/core/validation/secondary_motion_validator.py",
+            "sha256": "1451f76e22ba35bf86369e70900a924d3b6eb95ca3ae5e34a00a311a0986dc74"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_VALIDATION_VALIDATION_ADAPTERS",

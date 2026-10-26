@@ -119,6 +119,7 @@ def build_kotor_fbx_manifest(
     fbx_format: str = "",
     target_engine: str = "unreal",
     compatibility_profile: str = "standard",
+    pbr: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the sidecar preserving KOTOR semantics that FBX cannot represent."""
     target = Path(fbx_path)
@@ -211,6 +212,8 @@ def build_kotor_fbx_manifest(
         },
         "handoff": _engine_handoff(engine, profile),
     }
+    if pbr is not None:
+        manifest["pbr"] = _manifest_safe(pbr)
     if animation_selection is not None:
         manifest["animation_selection"] = animation_selection
     manifest[engine] = manifest["handoff"]
@@ -231,6 +234,7 @@ def write_kotor_fbx_manifest(
     fbx_format: str = "",
     target_engine: str = "unreal",
     compatibility_profile: str = "standard",
+    pbr: Mapping[str, Any] | None = None,
 ) -> Path:
     """Write and return the canonical FBX sidecar path."""
     manifest = build_kotor_fbx_manifest(
@@ -245,6 +249,7 @@ def write_kotor_fbx_manifest(
         fbx_format=fbx_format,
         target_engine=target_engine,
         compatibility_profile=compatibility_profile,
+        pbr=pbr,
     )
     path = sidecar_path_for_fbx(fbx_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -358,11 +363,15 @@ def _skin_summary(mesh_nodes: list[Any], node_names: set[str]) -> dict[str, Any]
         missing = sorted(name for name in counts if name not in node_names)
         all_missing.update(missing)
         skin_rows = list(getattr(node, "skin_data", []) or [])
+        vertex_count = len(getattr(node, "vertices", []) or [])
         over_limit = []
         unnormalized = []
+        zero_weight = []
         for index, row in enumerate(skin_rows):
             influences = list(getattr(row, "influences", []) or [])
             positive = [item for item in influences if _safe_float(getattr(item, "weight", 0.0), 0.0) > 0.0]
+            if not positive:
+                zero_weight.append(index)
             if len(positive) > 4:
                 over_limit.append(index)
             total = sum(_safe_float(getattr(item, "weight", 0.0), 0.0) for item in positive)
@@ -381,7 +390,10 @@ def _skin_summary(mesh_nodes: list[Any], node_names: set[str]) -> dict[str, Any]
                 "duplicate_bone_map_entries": duplicates,
                 "qbone_count": len(getattr(node, "qbone_list", []) or []),
                 "tbone_count": len(getattr(node, "tbone_list", []) or []),
+                "vertex_count": vertex_count,
                 "vertex_rows": len(skin_rows),
+                "weighted_vertices": len(skin_rows) - len(zero_weight),
+                "zero_weight_vertices": zero_weight[:64],
             }
         )
     return {
@@ -445,6 +457,23 @@ def _validation_summary(manifest: dict[str, Any]) -> dict[str, Any]:
         warnings.append({"code": "missing_skin_bones", "message": "Some skin bone_map entries do not exist as FBX/KOTOR nodes."})
     if skin.get("vertices_over_kotor_influence_limit"):
         errors.append({"code": "too_many_skin_influences", "message": "Some vertices exceed KOTOR's 4-influence skin limit."})
+    for row in skin.get("skin_meshes", []):
+        mesh_name = str(row.get("mesh", "") or "<unnamed skin>")
+        vertex_count = int(row.get("vertex_count", 0) or 0)
+        vertex_rows = int(row.get("vertex_rows", 0) or 0)
+        if vertex_rows != vertex_count:
+            errors.append({
+                "code": "skin_vertex_row_mismatch",
+                "message": (
+                    f"{mesh_name} has {vertex_rows} skin rows for "
+                    f"{vertex_count} vertices."
+                ),
+            })
+        if row.get("zero_weight_vertices"):
+            errors.append({
+                "code": "zero_weight_skin_vertices",
+                "message": f"{mesh_name} contains zero-weight skin rows.",
+            })
     fbx_diag = manifest.get("fbx", {}).get("diagnostics", {})
     if fbx_diag.get("checked") and not fbx_diag.get("ok", True):
         warnings.append({"code": "fbx_contract_warning", "message": "FBX text diagnostics reported import-contract issues."})
@@ -555,6 +584,9 @@ def _manifest_safe(value: Any) -> Any:
 def _engine_handoff(target_engine: str, compatibility_profile: str) -> dict[str, Any]:
     target = str(target_engine or "unreal").strip().lower()
     if target == "unity":
+        from src.core.export.pbr_materials import shader_contract
+
+        unity_shader = str(shader_contract("unity")["name"])
         return {
             "target": target,
             "compatibility_profile": compatibility_profile,
@@ -568,10 +600,14 @@ def _engine_handoff(target_engine: str, compatibility_profile: str) -> dict[str,
                 "import_materials": True,
                 "material_naming": "By Base Texture Name",
                 "normal_handling": "Import when exported tangents are present; otherwise calculate in Unity.",
+                "material_shader": unity_shader,
+                "base_color_space": "sRGB",
+                "data_texture_space": "linear",
             },
             "notes": [
                 "Keep the FBX and its textures folder together inside Assets so relative texture references resolve.",
                 "The Unity profile declares one KOTOR coordinate unit as one meter and uses linear animation curves with continuous Euler branches.",
+                "GhostRigger writes BaseColor, Normal, AO, ORM, and Unity MetallicSmoothness maps plus their native Lit shader bindings.",
             ],
         }
     if target == "3ds_max":
@@ -590,6 +626,9 @@ def _engine_handoff(target_engine: str, compatibility_profile: str) -> dict[str,
             ],
         }
     if target == "unreal":
+        from src.core.export.pbr_materials import shader_contract
+
+        unreal_shader = str(shader_contract("unreal")["name"])
         unreal_profile = str(compatibility_profile or "standard").strip().lower() == "unreal"
         return {
             "target": target,
@@ -611,9 +650,15 @@ def _engine_handoff(target_engine: str, compatibility_profile: str) -> dict[str,
                 "update_skeleton_reference_pose": False,
                 "preserve_native_kotor_skeleton": True,
                 "automatic_quinn_retarget": False,
+                "material_shader": unreal_shader,
+                "base_color_srgb": True,
+                "normal_srgb": False,
+                "orm_srgb": False,
+                "normal_compression": "Normalmap/BC5",
             },
             "notes": [
                 "Keep the FBX and its textures folder together and enable texture import so relative PNG references resolve.",
+                "Bind the generated ORM channels as R=Ambient Occlusion, G=Roughness, B=Metallic on an Unreal Default Lit material.",
                 "Enable Import Meshes in Bone Hierarchy so attached eyes, eyelids, teeth, tongue, and other rigid child meshes are imported as geometry instead of converted to bones.",
                 (
                     "The Unreal profile declares one KOTOR coordinate unit as one meter and writes fixed 30 fps linear animation curves with continuous Euler branches."

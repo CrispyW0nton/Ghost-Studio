@@ -114,7 +114,15 @@ def main() -> None:
     world = scene.world or bpy.data.worlds.new("SourcePoseWorld")
     scene.world = world
     world.color = (0.025, 0.025, 0.025)
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    # Blender 5.0 exposes Eevee as ``BLENDER_EEVEE`` again, while 4.x uses
+    # ``BLENDER_EEVEE_NEXT``.  Keep the read-only proof renderer portable
+    # across both supported generations instead of failing before capture.
+    engine_ids = {item.identifier for item in scene.bl_rna.properties["render"].fixed_type.properties["engine"].enum_items}
+    scene.render.engine = (
+        "BLENDER_EEVEE_NEXT"
+        if "BLENDER_EEVEE_NEXT" in engine_ids
+        else "BLENDER_EEVEE"
+    )
     scene.render.resolution_x = 640
     scene.render.resolution_y = 640
     scene.render.resolution_percentage = 100

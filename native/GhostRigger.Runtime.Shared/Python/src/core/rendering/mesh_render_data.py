@@ -280,6 +280,30 @@ def _model_nodes(model) -> list:
     return list(getattr(model, "nodes", []) or [])
 
 
+def _node_is_embedded_walkmesh(node) -> bool:
+    """Return whether *node* is collision/pathing geometry, not a visual mesh.
+
+    Stock room MDLs carry their AABB walkmesh alongside the visible room
+    geometry.  The loader marks these nodes with ``vertex_space=2`` and the
+    original AABB flag, but retained/composed scenes may preserve only one of
+    those signals.  Keep every renderer on the same conservative contract:
+    embedded walkmeshes are presented only by the dedicated walkmesh overlay.
+    """
+    if node is None:
+        return False
+    if bool(getattr(node, "is_aabb", False)):
+        return True
+    try:
+        if int(getattr(node, "flags", 0) or 0) & 0x0200:
+            return True
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(getattr(node, "vertex_space", 0) or 0) == 2
+    except (TypeError, ValueError):
+        return False
+
+
 def _node_is_renderable_mesh(node) -> bool:
     if node is None:
         return False
@@ -289,9 +313,27 @@ def _node_is_renderable_mesh(node) -> bool:
         return False
     if bool(getattr(node, "is_saber", False)):
         return False
-    if int(getattr(node, "vertex_space", 0) or 0) == 2:
+    if _node_is_embedded_walkmesh(node):
         return False
     return bool(getattr(node, "vertices", getattr(node, "verts", [])) and getattr(node, "faces", []))
+
+
+def _node_has_renderable_rigid_surface(node) -> bool:
+    """Return whether a rigid MDL node explicitly describes visible geometry.
+
+    Odyssey's ``_g`` suffix is used both by hidden deformation helpers and by
+    visible rigid body segments on several KOTOR 2 droids.  The authored render
+    flag, diffuse texture, and UV channel together are stronger evidence than
+    that naming convention alone.
+    """
+    if node is None or bool(getattr(node, "is_skin", False)):
+        return False
+    if getattr(node, "render", True) is False:
+        return False
+    texture = _clean_tex_name(getattr(node, "texture", "") or "")
+    if not texture or texture == "****":
+        return False
+    return bool(getattr(node, "uvs", []) or [])
 
 
 def _node_vertices_are_model_world(node) -> bool:

@@ -49,6 +49,8 @@ native/GhostRigger.Core.IO.MDL/**/*.py[cod]
 # the repo — same pattern as /tools/* / !/tools/model_inspector.py.  Using
 # /tests/* instead of /tests/ so re-inclusion patterns resolve.
 /tests/*
+!/tests/test_unreal_level_import.py
+!/tests/test_unreal_import_gpu_culling.py
 !/tests/__init__.py
 !/tests/conftest.py
 !/tests/test_core_contracts.py
@@ -67,6 +69,7 @@ native/GhostRigger.Core.IO.MDL/**/*.py[cod]
 !/tests/test_mcp_resource_exposure.py
 !/tests/test_mcp_textures.py
 !/tests/test_mcp_skinning.py
+!/tests/test_pbr_export_pipeline.py
 !/tests/test_ghost_studio_spatial_adapter.py
 !/tests/test_spatial_auth_appcontainer_acl.py
 !/tests/test_spatial_embedded_bootstrap.py
@@ -87,6 +90,7 @@ native/GhostRigger.Core.IO.MDL/**/*.py[cod]
 !/tests/test_record_grdev01_runtime_diagnostic_outcome_script.py
 !/tests/test_headless_body_workflow.py
 !/tests/test_bas_attachment_catalog.py
+!/tests/test_bas_character_presets.py
 !/tests/test_resource_manager_revision_concurrency.py
 !/tests/test_head_workflow.py
 !/tests/test_head_builder_project.py
@@ -461,6 +465,9 @@ knowledge_base/test_artifacts/*.zip
 !/docs/
 /.codex_deps/
 /docs/*
+!/docs/UNREAL_LEVEL_IMPORT.md
+!/docs/UNREAL_TO_KOTOR_WORKFLOW_PLAN.md
+!/docs/UNREAL_PIPELINE_IMPLEMENTATION.md
 !/docs/knowledgebase/
 !/docs/knowledgebase/*.md
 !/docs/knowledgebase/skills.md
@@ -490,3 +497,10 @@ knowledge_base/test_artifacts/*.zip
 /KotorDebugger/observer_*.json
 /*.kmap
 /extract_books_output.txt
+
+!/tests/test_unreal_import_state.py
+!/tests/test_unreal_map_workflow.py
+!/tests/test_unreal_native_snapshot.py
+!/tests/test_unreal_pipeline_payloads.py
+
+!tests/test_unreal_pipeline_jobs.py

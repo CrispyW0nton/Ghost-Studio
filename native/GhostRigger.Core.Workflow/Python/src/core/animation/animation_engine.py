@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple, Any
 
 from ..geometry.model_data import (
-    Animation, AnimEvent, ModelNode, KotorModel,
+    Animation, AnimEvent, GameVersion, ModelNode, KotorModel,
     _quat_mul, _quat_rotate, _quat_normalize_bind
 )
 try:
@@ -645,6 +645,120 @@ def _controller_matches(ctrl: Dict[str, Any], controller_type: int, controller_n
     return str(ctrl.get("name", "")).lower() == controller_name
 
 
+def _find_controller(
+    controllers: List[Dict[str, Any]],
+    controller_type: int,
+    controller_name: str,
+) -> Optional[Dict[str, Any]]:
+    """Return the first matching controller channel, if present."""
+
+    return next(
+        (
+            controller
+            for controller in controllers
+            if _controller_matches(controller, controller_type, controller_name)
+        ),
+        None,
+    )
+
+
+_C_KATH_ROOT_BIND_POSITION = (0.00186379, -0.37697601, 0.81954002)
+_ABSOLUTE_LOCAL_POSITION_CACHE_KEY = "_gr_absolute_local_position"
+
+
+def _position_controller_is_absolute_local(
+    model: KotorModel,
+    node_name: str,
+    bind_position: Tuple[float, float, float] | List[float],
+    controller: Optional[Dict[str, Any]],
+) -> bool:
+    """Identify the verified retail K1 ``c_kathroot`` position convention.
+
+    Every local animation in the retail K1 ``c_kath`` model authors the
+    ``c_kathroot`` POSITION rows as absolute node-local coordinates.  The row
+    shapes are not uniform: combat clips commonly finish on the bind row while
+    locomotion clips (``cwalk``, ``crun``, and the pause/turn family) keep a
+    different authored Y/Z baseline for the whole clip.  Keying this decision
+    to the closing row therefore fixed only part of the animation set and left
+    locomotion with the bind position added a second time.
+
+    Keep the exception constrained to the exact game/model/node/bind contract;
+    other Aurora POSITION controllers retain the ordinary bind-plus-delta
+    semantics.
+    """
+
+    if controller is None:
+        return False
+    cached = controller.get(_ABSOLUTE_LOCAL_POSITION_CACHE_KEY)
+    if isinstance(cached, bool):
+        return cached
+
+    model_name = str(getattr(model, "name", "") or "").strip().casefold()
+    contains_c_kath_root = model_name == "c_kath"
+    if not contains_c_kath_root:
+        try:
+            contains_c_kath_root = any(
+                str(getattr(node, "name", "") or "").strip().casefold() == "c_kath"
+                for node in model.all_nodes()
+            )
+        except Exception:
+            contains_c_kath_root = False
+
+    result = (
+        getattr(model, "game_version", None) == GameVersion.K1
+        and contains_c_kath_root
+        and str(node_name or "").strip().casefold() == "c_kathroot"
+        and len(bind_position) >= 3
+        and all(
+            math.isclose(
+                float(bind_position[index]),
+                _C_KATH_ROOT_BIND_POSITION[index],
+                abs_tol=1e-6,
+            )
+            for index in range(3)
+        )
+    )
+    controller[_ABSOLUTE_LOCAL_POSITION_CACHE_KEY] = result
+    return result
+
+
+def _compose_position_controller_value(
+    bind_position: Tuple[float, float, float] | List[float],
+    controller_value: Tuple[float, float, float] | List[float],
+    *,
+    animation_scale: float = 1.0,
+    absolute_local: bool = False,
+    absolute_reference: Optional[Tuple[float, float, float] | List[float]] = None,
+) -> Tuple[float, float, float]:
+    """Compose one authored POSITION row with its bind transform."""
+
+    value = (
+        float(controller_value[0]),
+        float(controller_value[1]),
+        float(controller_value[2]),
+    )
+    if absolute_local:
+        if absolute_reference is not None and len(absolute_reference) >= 3:
+            # Character preview keeps the actor at its authored scene origin
+            # while preserving the clip's root-motion delta.  Retail c_kath
+            # locomotion clips use a different absolute root baseline from the
+            # static MDL; applying that baseline directly makes the creature
+            # jump toward the camera as soon as playback starts.
+            return (
+                float(bind_position[0]) + value[0] - float(absolute_reference[0]),
+                float(bind_position[1]) + value[1] - float(absolute_reference[1]),
+                float(bind_position[2]) + value[2] - float(absolute_reference[2]),
+            )
+        return value
+
+    scale = float(animation_scale)
+    return (
+        float(bind_position[0]) + value[0] * scale,
+        float(bind_position[1]) + value[1] * scale,
+        float(bind_position[2]) + value[2] * scale,
+    )
+
+
 _SORTED_SAMPLING_TIMES_KEY = "_gr_sorted_sampling_times"
 
 
@@ -765,18 +879,28 @@ def evaluate_aurora_animation_pose(
         anim_node = anim_nodes.get(str(node.name or "").lower())
 
         if anim_node is not None:
-            sampled_position = _sample_controller_absolute(
+            position_controller = _find_controller(
                 anim_node.controllers,
+                AnimationEngine.CTRL_POSITION,
+                "position",
+            )
+            sampled_position = _sample_controller_absolute(
+                [position_controller] if position_controller is not None else [],
                 AnimationEngine.CTRL_POSITION,
                 "position",
                 float(time_seconds),
                 clamp=clamp,
             )
             if sampled_position is not None and len(sampled_position) >= 3:
-                local_position = (
-                    float(node.position[0]) + float(sampled_position[0]),
-                    float(node.position[1]) + float(sampled_position[1]),
-                    float(node.position[2]) + float(sampled_position[2]),
+                local_position = _compose_position_controller_value(
+                    node.position,
+                    sampled_position,
+                    absolute_local=_position_controller_is_absolute_local(
+                        model,
+                        node.name,
+                        node.position,
+                        position_controller,
+                    ),
                 )
 
             sampled_rotation = _sample_controller_absolute(
@@ -1297,15 +1421,26 @@ class AnimationEngine:
                 # a model's OWN animations, which is exactly why the local
                 # branch of _find_anim sets _current_anim_scale = 1.0.
                 if all(math.isfinite(v) for v in val[:3]):
-                    s = self._current_anim_scale
-                    if s == 1.0:
-                        pos = [pos[0] + val[0],
-                               pos[1] + val[1],
-                               pos[2] + val[2]]
-                    else:
-                        pos = [pos[0] + val[0] * s,
-                               pos[1] + val[1] * s,
-                               pos[2] + val[2] * s]
+                    absolute_local = _position_controller_is_absolute_local(
+                        self.model,
+                        anim_node.name,
+                        pos,
+                        ctrl,
+                    )
+                    absolute_reference = None
+                    if absolute_local:
+                        controller_values = ctrl.get("values", []) or []
+                        if controller_values and len(controller_values[0]) >= 3:
+                            absolute_reference = controller_values[0]
+                    pos = list(
+                        _compose_position_controller_value(
+                            pos,
+                            val,
+                            animation_scale=self._current_anim_scale,
+                            absolute_local=absolute_local,
+                            absolute_reference=absolute_reference,
+                        )
+                    )
             elif ctype == self.CTRL_ORIENTATION and len(val) >= 4:
                 # KotOR orientation keyframes are ABSOLUTE quaternions (replace bind rot).
                 # Validate and normalize animated rotation.
@@ -1839,14 +1974,28 @@ class AnimationEngine:
                 rot = list(base.rotation) if base else [0.0, 0.0, 0.0, 1.0]
 
                 if anim_n:
+                    position_controller = _find_controller(
+                        anim_n.controllers,
+                        AnimationEngine.CTRL_POSITION,
+                        "position",
+                    )
                     ctrl_pos_t, ctrl_pos_v = _get_ctrl(anim_n, AnimationEngine.CTRL_POSITION)
                     ctrl_rot_t, ctrl_rot_v = _get_ctrl(anim_n, AnimationEngine.CTRL_ORIENTATION)
                     ev_pos = _interp_channel(ctrl_pos_t, ctrl_pos_v, t)
                     ev_rot = _interp_channel(ctrl_rot_t, ctrl_rot_v, t)
                     if ev_pos and len(ev_pos) >= 3 and all(math.isfinite(v) for v in ev_pos[:3]):
-                        # BUG-05 FIX: position keys are DELTA offsets, not absolute.
-                        # Must add to bind-pose position (same formula as _eval_node).
-                        pos = [pos[i] + ev_pos[i] for i in range(3)]
+                        pos = list(
+                            _compose_position_controller_value(
+                                pos,
+                                ev_pos,
+                                absolute_local=_position_controller_is_absolute_local(
+                                    self.model,
+                                    node.name,
+                                    pos,
+                                    position_controller,
+                                ),
+                            )
+                        )
                     if ev_rot and len(ev_rot) >= 4:
                         rot = ev_rot[:4]
 

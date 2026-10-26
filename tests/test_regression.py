@@ -1534,6 +1534,130 @@ def test_standard_renderers_exclude_embedded_room_walkmesh_geometry() -> None:
     assert "if _node_is_embedded_walkmesh(node):" in source
 
 
+def test_explicit_rigid_g_surface_is_not_a_deformation_helper() -> None:
+    from src.core.camera.arcball_camera import ArcBallCamera
+    from src.core.rendering.frame_core.renderer import FrameRenderer
+    from src.core.rendering.mesh_render_data import _node_has_renderable_rigid_surface
+
+    visible_droid_part = SimpleNamespace(
+        name="pelvis_g",
+        is_skin=False,
+        texture="c_condrdboss",
+        uvs=[(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)],
+        render=True,
+        _imported=False,
+    )
+    hidden_human_helper = SimpleNamespace(
+        **{**visible_droid_part.__dict__, "texture": "n_saulh", "render": False}
+    )
+    renderer = FrameRenderer(ArcBallCamera())
+    renderer.model = SimpleNamespace(classification="character", model_type=4)
+    renderer._skin_proxy_ids = set()
+
+    assert _node_has_renderable_rigid_surface(visible_droid_part) is True
+    assert renderer._is_deformation_helper(visible_droid_part) is False
+    assert _node_has_renderable_rigid_surface(hidden_human_helper) is False
+    assert renderer._is_deformation_helper(hidden_human_helper) is True
+
+    gpu_source = Path(
+        "native/GhostRigger.Core.Rendering/Python/src/adapters/rendering/moderngl_renderer_impl.py"
+    ).read_text(encoding="utf-8")
+    assert "_node_has_renderable_rigid_surface(nd)" in gpu_source
+
+
+@pytest.mark.skipif(not K2_PATH.exists(), reason="K2 install not available")
+@pytest.mark.parametrize(
+    ("resref", "expected_rigid_parts", "expected_visible_meshes", "minimum_x_extent"),
+    (
+        ("c_condrdboss", 19, 23, 2.60),
+        ("c_condrdm", 18, 21, 3.50),
+        ("c_fordrd", 34, 37, 1.75),
+        ("c_mk2_drd", 7, 22, 1.37),
+    ),
+)
+def test_k2_rigid_droid_surfaces_are_visible(
+    resref: str,
+    expected_rigid_parts: int,
+    expected_visible_meshes: int,
+    minimum_x_extent: float,
+) -> None:
+    from src.core.camera.arcball_camera import ArcBallCamera
+    from src.core.game.kotor_loader import load_model_from_bytes
+    from src.core.rendering.frame_core.renderer import FrameRenderer
+    from src.core.rendering.gpu_scene_helpers import _compute_model_bounds
+    from src.core.rendering.mesh_render_data import _node_has_renderable_rigid_surface
+
+    mdl, mdx = _raw_model("k2", resref)
+    model = load_model_from_bytes(mdl, mdx)
+    renderer = FrameRenderer(ArcBallCamera())
+    renderer.model = model
+    renderer._skin_proxy_ids = renderer._compute_skin_proxy_ids(model)
+    rigid_parts = [
+        node
+        for node in model.all_nodes()
+        if str(getattr(node, "name", "")).lower().endswith(("_g", "_g0", "_dum"))
+        and _node_has_renderable_rigid_surface(node)
+    ]
+
+    assert len(rigid_parts) == expected_rigid_parts
+    assert all(not renderer._is_deformation_helper(node) for node in rigid_parts)
+    assert len(list(renderer._iter_visible_mesh_nodes())) == expected_visible_meshes
+    render_min, render_max = model.render_bounds()
+    gpu_bounds = _compute_model_bounds(model)
+    assert render_max[0] - render_min[0] >= minimum_x_extent
+    assert gpu_bounds["extent_x"] >= minimum_x_extent
+
+
+@pytest.mark.skipif(not K2_PATH.exists(), reason="K2 install not available")
+@pytest.mark.parametrize(
+    ("resref", "hand_meshes"),
+    (
+        ("c_drdprot", {"lhand", "lhand2", "rhand2"}),
+        ("c_drdwar", {"lhanddrd", "rhanddrd"}),
+        ("c_mk2_drd", {"lhand_g", "rhand_g"}),
+    ),
+)
+def test_k2_droid_hand_meshes_are_not_treated_as_attachment_hooks(
+    resref: str,
+    hand_meshes: set[str],
+) -> None:
+    from src.core.camera.arcball_camera import ArcBallCamera
+    from src.core.game.kotor_loader import load_model_from_bytes
+    from src.core.rendering.frame_core.renderer import FrameRenderer
+
+    mdl, mdx = _raw_model("k2", resref)
+    model = load_model_from_bytes(mdl, mdx)
+    renderer = FrameRenderer(ArcBallCamera())
+    renderer.set_model(model)
+    visible_names = {node.name.lower() for node in renderer._iter_visible_mesh_nodes()}
+
+    assert hand_meshes.issubset(visible_names)
+
+
+@pytest.mark.skipif(not K1_PATH.exists(), reason="K1 install not available")
+def test_k1_saul_rigid_g_helpers_remain_hidden() -> None:
+    from src.core.camera.arcball_camera import ArcBallCamera
+    from src.core.game.kotor_loader import load_model_from_bytes
+    from src.core.rendering.frame_core.renderer import FrameRenderer
+    from src.core.rendering.mesh_render_data import _node_has_renderable_rigid_surface
+
+    mdl, mdx = _raw_model("k1", "n_admrlsaulkar")
+    model = load_model_from_bytes(mdl, mdx)
+    renderer = FrameRenderer(ArcBallCamera())
+    renderer.model = model
+    renderer._skin_proxy_ids = renderer._compute_skin_proxy_ids(model)
+    helper_parts = [
+        node
+        for node in model.all_nodes()
+        if not getattr(node, "is_skin", False)
+        and str(getattr(node, "name", "")).lower().endswith(("_g", "_g0", "_dum"))
+    ]
+
+    assert helper_parts
+    assert not any(_node_has_renderable_rigid_surface(node) for node in helper_parts)
+    assert all(renderer._is_deformation_helper(node) for node in helper_parts)
+
+
 @pytest.mark.skipif(not K1_PATH.exists(), reason="K1 install not available")
 def test_k1_m14aa_embedded_walkmeshes_are_not_visual_draw_nodes() -> None:
     from src.core.game.kotor_loader import load_model_from_bytes
@@ -2455,6 +2579,24 @@ def test_c_drexlf_texture_alias_resolves_shipped_diffuse() -> None:
     assert "c_drex01" in textures
 
 
+@pytest.mark.skipif(not K2_PATH.exists(), reason="K2 install not available")
+def test_missing_override_repeating_blaster_texture_uses_canonical_fallback() -> None:
+    from src.core.assets.resource_manager import RES_TPC, _texture_name_candidates
+
+    manager = _resource_manager()
+    assert manager.get_strict("x_rptnblstr_001", RES_TPC, "K2") is None
+
+    canonical = manager.get_texture("w_rptnblstr_001", "K2")
+    resolved = manager.get_texture("x_rptnblstr_001", "K2")
+
+    assert canonical is not None
+    assert resolved == canonical
+    assert _texture_name_candidates("x_rptnblstr_001") == (
+        "x_rptnblstr_001",
+        "w_rptnblstr_001",
+    )
+
+
 def test_obj_import_preserves_mtl_map_kd_texture_metadata(tmp_path) -> None:
     """OBJ imports should keep UVs and the diffuse texture named by map_Kd."""
     pytest.importorskip("trimesh")
@@ -2527,6 +2669,37 @@ def test_k1_aurora_light_controllers_populate_runtime_light_fields() -> None:
     assert light.light_color == pytest.approx((0.921571, 0.964708, 1.0))
     assert light.light_kind == "point"
     assert light.light_enabled is True
+
+
+def test_moderngl_ignores_zero_energy_model_lights() -> None:
+    from src.adapters.rendering.moderngl_renderer_impl import GpuRenderer
+
+    def light(*, color=(1.0, 1.0, 1.0), multiplier=1.0):
+        return SimpleNamespace(
+            is_light=True,
+            light_enabled=True,
+            light_kind="point",
+            light_ambient_only=False,
+            light_color=color,
+            light_radius=5.0,
+            light_multiplier=multiplier,
+            light_cone_degrees=45.0,
+            light_area_size=1.0,
+        )
+
+    renderer = object.__new__(GpuRenderer)
+    records = renderer._scene_light_records(
+        [
+            light(color=(0.0, 0.0, 0.0), multiplier=2.0),
+            light(color=(1.0, 1.0, 1.0), multiplier=0.0),
+            light(color=(0.25, 0.5, 1.0), multiplier=1.5),
+        ],
+        lambda _node: ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)),
+    )
+
+    assert len(records) == 1
+    assert records[0]["color"] == (0.25, 0.5, 1.0)
+    assert records[0]["intensity"] == 1.5
 
 
 def test_moderngl_exact_uniform_submission_skips_only_identical_payloads() -> None:

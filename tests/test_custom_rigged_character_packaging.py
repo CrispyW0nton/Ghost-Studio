@@ -135,8 +135,18 @@ def test_package_is_portable_merge_safe_and_preserves_sources(tmp_path: Path) ->
     plan = json.loads((package / "additional" / "install-plan.json").read_text(encoding="utf-8"))
     assert plan["source_paths_in_package"] is False
     assert plan["requires_custom_animation_patch"] is False
+    profile_paths = list((package / "additional" / "secondary-motion").glob("*.json"))
+    assert len(profile_paths) == 1
+    profile = json.loads(profile_paths[0].read_text(encoding="utf-8"))
+    assert profile["schema"] == "ghostrigger.secondary_motion_profile.v1"
+    assert profile["model_identity"]["target_kind"] == "custom_character"
+    assert profile["runtime"]["write_enabled"] is False
+    assert plan["secondary_motion_profile"] == profile_paths[0].relative_to(package).as_posix()
+    assert plan["secondary_motion_write_enabled"] is False
     package_report = json.loads(Path(result.report_path).read_text(encoding="utf-8"))
     assert package_report["absolute_developer_paths_in_package"] is False
+    assert package_report["secondary_motion"]["profile_id"] == profile["profile_id"]
+    assert package_report["secondary_motion"]["runtime"]["state"] == "capture_only"
     assert str(tmp_path).lower() not in Path(result.report_path).read_text(encoding="utf-8").lower()
 
     rebuilt = CustomRiggedCharacterPackagingService(process_is_running=lambda _name: False).build_package(

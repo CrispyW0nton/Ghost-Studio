@@ -40,7 +40,7 @@ del /Q "$(TargetDir)$(TargetName).exp" 2&gt;nul</Command></PostBuildEvent></Item
     <None Include="Python\src\core\validation\validation_bus.py" />
     <None Include="Python\src\core\validation\viewport_validator.py" />
     <None Include="Python\src\core\validation\kotor_module_engine_contract.py" />
-  <None Include="Python\src\core\validation\custom_rigged_character_validator.py" /><None Include="Python\src\core\validation\head_builder_preflight.py" /></ItemGroup>
+  <None Include="Python\src\core\validation\custom_rigged_character_validator.py" /><None Include="Python\src\core\validation\head_builder_preflight.py" /><None Include="Python\src\core\validation\secondary_motion_validator.py" /></ItemGroup>
   <PropertyGroup Label="PythonPayloadBuild">
     <GhostRiggerPythonPayloadPython Condition="'$(GhostRiggerPythonPayloadPython)'=='' and '$(GHOSTRIGGER_PYTHON)'!=''">$(GHOSTRIGGER_PYTHON)</GhostRiggerPythonPayloadPython>
     <GhostRiggerPythonPayloadPython Condition="'$(GhostRiggerPythonPayloadPython)'==''">python</GhostRiggerPythonPayloadPython>

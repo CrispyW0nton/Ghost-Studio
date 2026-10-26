@@ -116,8 +116,15 @@ def test_external_dependency_hash_pins_are_case_insensitive(
     assert evidence[1]["verified"] is True
 
 
+@pytest.mark.parametrize(
+    ("installed", "install_state"),
+    ((False, "not_requested"), (True, "installed")),
+)
 def test_external_dependency_evidence_can_use_prepared_candidate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    installed: bool,
+    install_state: str,
 ) -> None:
     data = b"prepared-xaria-voice-design-1"
     expected = hashlib.sha256(data).hexdigest()
@@ -142,8 +149,8 @@ def test_external_dependency_evidence_can_use_prepared_candidate(
         json.dumps(
             {
                 "operation": "add_xaria_plcaa_encounter",
-                "installed": False,
-                "install_state": "not_requested",
+                "installed": installed,
+                "install_state": install_state,
                 "module": {
                     "candidate": {
                         "size": candidate_module.stat().st_size,
@@ -443,12 +450,26 @@ def test_xaria_teaser_recipe_is_k2_only_and_separate_from_plcaa() -> None:
     assert ROOM_PIECE_ID == "k2_402dxn_402dxna"
     assert "plcaa" not in payload
     assert "k1_" not in payload
-    assert {(item["resref"], item["type"]) for item in BUNDLED_ENCOUNTER_RESOURCES} >= {
-        (PRIVATE_XARIA_TEMPLATE, "utc"),
-        (PRIVATE_TRIGGER_TEMPLATE, "utt"),
-        (PRIVATE_DIRECTOR_TEMPLATE, "utp"),
-        (PRIVATE_DIALOGUE, "dlg"),
-        *((item, "utc") for item in PRIVATE_WRAID_TEMPLATES),
+    bundled = {
+        (item["resref"], item["type"])
+        for item in BUNDLED_ENCOUNTER_RESOURCES
+    }
+    assert bundled >= {
+        ("xar_enc", "utc"),
+        ("xar_introtrig", "utt"),
+        ("xar_director", "utp"),
+        ("xar_clock", "utp"),
+        ("xar_cam", "dlg"),
+        ("xaria_blade", "uti"),
+        ("xar_nydak1", "utc"),
+        ("xar_nydak2", "utc"),
+        ("xar_nydak3", "utc"),
+        ("kxar_mistsnd", "uts"),
+        ("kxar_lightsnd", "uts"),
+        ("kxar_drainsnd", "uts"),
+        ("kxar_start", "ncs"),
+        ("kxar_show", "ncs"),
+        ("kxar_finish", "ncs"),
     }
     assert {item["kind"] for item in ENCOUNTER_DEPENDENCIES} >= {
         "base_game",
@@ -458,13 +479,9 @@ def test_xaria_teaser_recipe_is_k2_only_and_separate_from_plcaa() -> None:
         "streamvoice_file",
     }
     assert not any(
-        item.get("resref", "").startswith("xar_") for item in BUNDLED_ENCOUNTER_RESOURCES
-    )
-    assert {
-        item["resref"]
+        item.get("resref", "").startswith("xt_")
         for item in BUNDLED_ENCOUNTER_RESOURCES
-        if item.get("resref", "").startswith("kxar_")
-    } == set(DIRECTOR_POWER_SCRIPT_RESREFS)
+    )
 
 
 def test_xaria_teaser_spatial_plan_is_purposeful_and_route_safe() -> None:
@@ -663,9 +680,9 @@ def test_xaria_teaser_preserves_three_distinct_combat_showcase_lanes() -> None:
         "Ichor Lightning",
         "Ichor Drain",
     )
-    assert beats["Miststep: Ambush"]["target_tag"] == PRIVATE_WRAID_TAGS[0]
-    assert beats["Ichor Lightning"]["target_tag"] == PRIVATE_WRAID_TAGS[1]
-    assert beats["Ichor Drain"]["target_tag"] == PRIVATE_WRAID_TAGS[2]
+    assert beats["Miststep: Ambush"]["target_tag"] == "Xaria_Wraid_1"
+    assert beats["Ichor Lightning"]["target_tag"] == "Xaria_Wraid_2"
+    assert beats["Ichor Drain"]["target_tag"] == "Xaria_Wraid_3"
     assert beats["Miststep: Ambush"]["arrival_clearance_m"] >= 1.5
     assert len({item["camera_role"] for item in SHOWCASE_BEATS}) == 3
     assert all(item["unobstructed_sightline"] for item in SHOWCASE_BEATS)
@@ -1161,9 +1178,30 @@ def test_xaria_teaser_uses_a_naturally_terminating_three_camera_owner() -> None:
     assert teaser_builder.PRIVATE_CAMERA_POLL_SECONDS == 1
 
     placements = _authored_gameplay_placements()
-    assert len(placements.placeables) == 1
-    assert placements.placeables[0].template_resref == PRIVATE_DIRECTOR_TEMPLATE
-    assert placements.placeables[0].tag == PRIVATE_DIRECTOR_TAG
+    assert {
+        (item.template_resref, item.tag)
+        for item in placements.creatures
+    } == {
+        ("xar_enc", "Xaria_Encounter"),
+        ("xar_nydak1", "Xaria_Wraid_1"),
+        ("xar_nydak2", "Xaria_Wraid_2"),
+        ("xar_nydak3", "Xaria_Wraid_3"),
+    }
+    assert {
+        (item.template_resref, item.tag)
+        for item in placements.placeables
+    } == {
+        ("xar_director", "Xaria_Director"),
+        ("xar_clock", "Xaria_Timeline"),
+    }
+    assert {
+        (item.template_resref, item.tag)
+        for item in placements.sounds
+    } == {
+        ("kxar_mistsnd", "kxar_mistsnd"),
+        ("kxar_lightsnd", "kxar_lightsnd"),
+        ("kxar_drainsnd", "kxar_drainsnd"),
+    }
     builder_source = (ROOT / "scripts" / "build_xaria_teaser_map.py").read_text(encoding="utf-8")
     assert teaser_builder.PRODUCTION_DIALOGUE == "xaria"
     assert "xaria.conversation = ResRef(PRODUCTION_DIALOGUE)" in builder_source
@@ -1289,7 +1327,7 @@ def test_xaria_teaser_trigger_geometry_is_local_to_each_git_instance() -> None:
             tuple(float(value) for value in vertex) for vertex in trigger.geometry
         )
         assert local_vertices
-        if trigger.template_resref == PRIVATE_TRIGGER_TEMPLATE:
+        if trigger.template_resref == "xar_introtrig":
             assert position == pytest.approx(ENCOUNTER_TRIGGER_POSITION)
             assert len(local_vertices) == len(ENCOUNTER_TRIGGER_GEOMETRY)
             for actual, expected in zip(local_vertices, ENCOUNTER_TRIGGER_GEOMETRY):
@@ -1310,7 +1348,7 @@ def test_xaria_teaser_trigger_geometry_is_local_to_each_git_instance() -> None:
         )
         assert world_center[0] == pytest.approx(position[0], abs=0.01)
         assert world_center[1] == pytest.approx(position[1], abs=0.01)
-        if trigger.template_resref == PRIVATE_TRIGGER_TEMPLATE:
+        if trigger.template_resref == "xar_introtrig":
             mean_local_z = sum(vertex[2] for vertex in local_vertices) / len(local_vertices)
             assert abs(mean_local_z) < 0.02
             assert world_center[2] == pytest.approx(position[2] + mean_local_z, abs=1.0e-6)

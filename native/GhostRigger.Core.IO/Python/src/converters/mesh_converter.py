@@ -654,6 +654,10 @@ class OBJExporter:
             return False
         if getattr(node, 'is_emitter', False) or getattr(node, 'is_light', False):
             return False
+        # Level assembly has already selected real room/placement surfaces.
+        # Untextured blockout meshes are valid geometry, not rig helpers.
+        if bool(getattr(node, '_gr_level_export_geometry', False)):
+            return True
         if cls._is_deformation_helper(node):
             return False
         return True
@@ -813,7 +817,7 @@ class OBJExporter:
             for uv_index, (u,v) in enumerate(node.uvs):
                 if uv_index % 1024 == 0:
                     check_export_cancelled(is_cancelled)
-                obj_lines.append(f"vt {u:.6f} {(1.0 - v):.6f}")
+                obj_lines.append(f"vt {u:.6f} {(1.0 - v if getattr(node, 'uv_v_flip', True) else v):.6f}")
 
             for normal_index, (x, y, z) in enumerate(world_normals):
                 if normal_index % 1024 == 0:
@@ -842,6 +846,7 @@ class OBJExporter:
                     tuple(float(value) for value in material_node.diffuse),
                     tuple(float(value) for value in material_node.ambient),
                     tuple(float(value) for value in material_node.specular),
+                    tuple(float(value) for value in material_node.selfillum),
                     float(material_node.shininess),
                     float(material_node.alpha),
                 )
@@ -864,11 +869,13 @@ class OBJExporter:
                 r,g,b = material_node.diffuse
                 ar,ag,ab = material_node.ambient
                 sr,sg,sb = material_node.specular
+                er,eg,eb = material_node.selfillum
                 mtl_lines += [
                     f"newmtl {mat_name}",
                     f"Ka {ar:.4f} {ag:.4f} {ab:.4f}",
                     f"Kd {r:.4f} {g:.4f} {b:.4f}",
                     f"Ks {sr:.4f} {sg:.4f} {sb:.4f}",
+                    f"Ke {er:.4f} {eg:.4f} {eb:.4f}",
                     f"Ns {max(material_node.shininess, 0.0):.2f}",
                     f"d  {material_node.alpha:.4f}",
                 ]
@@ -1181,10 +1188,19 @@ def _export_rigging_data(model: KotorModel, out_dir: Path) -> int:
             bones_list.append(bone_entry)
 
         skel_data = {
+            'schema':      'ghostrigger.kotor.rigging.v2',
             'model':       model_stem,
             'game':        str(getattr(model.game_version, 'name',
                                        model.game_version)),  # 'K1' or 'K2'
             'supermodel':  model.supermodel,
+            'coordinate_system': {
+                'up_axis': 'Z',
+                'front_axis': '-Y',
+                'right_axis': 'X',
+                'handedness': 'right',
+                'linear_unit': 'meter',
+            },
+            'animation_scale': float(getattr(model, 'anim_scale', 1.0) or 1.0),
             'bone_count':  len(bones_list),
             'bones':       bones_list,
         }
@@ -1258,11 +1274,22 @@ def _export_rigging_data(model: KotorModel, out_dir: Path) -> int:
                        for ev in anim.events]
 
         anim_data = {
+            'schema':          'ghostrigger.kotor.animation.v2',
             'model':           model_stem,
             'name':            anim.name,
             'length':          anim.length,
             'transition_time': anim.transition_time,
             'anim_root':       anim.anim_root,
+            'coordinate_system': {
+                'up_axis': 'Z',
+                'front_axis': '-Y',
+                'right_axis': 'X',
+                'handedness': 'right',
+                'linear_unit': 'meter',
+            },
+            'animation_scale': float(getattr(model, 'anim_scale', 1.0) or 1.0),
+            'position_controller_semantics': 'bind_plus_scaled_delta',
+            'rotation_controller_semantics': 'absolute_local_quaternion_xyzw',
             'events':          events_data,
             'node_count':      len(anim_nodes_data),
             'nodes':           anim_nodes_data,
@@ -1379,8 +1406,16 @@ class FBXExporter:
                               polygon material assignments and both UV channels.
         """
         compatibility_profile = self.normalize_compatibility_profile(compatibility_profile)
+        skin_errors = self._skin_export_contract_errors(model)
+        if skin_errors:
+            log.error(
+                "FBX export blocked because the skin contract is incomplete:\n%s",
+                "\n".join(f"  - {message}" for message in skin_errors),
+            )
+            return False
         exporter_backend = ""
         fbx_format = ""
+        pbr_result = None
         # Rigged or animated models must use the ASCII 7.4 writer: the SDK
         # path writes skeleton nodes translation-only (no rotation), builds no
         # skin clusters, and exports no animation takes, so a creature body
@@ -1436,17 +1471,51 @@ class FBXExporter:
             import traceback as _tb
             try:
                 texture_paths = None
+                pbr_materials = None
                 if tex_cache is not None:
-                    texture_paths = self._export_fbx_textures_to_dir(
-                        model,
-                        Path(fbx_path).parent / "textures",
-                        tex_cache,
-                        Path(fbx_path).parent,
-                    )
+                    if compatibility_profile in {
+                        self.COMPATIBILITY_UNITY,
+                        self.COMPATIBILITY_UNREAL,
+                    }:
+                        from src.core.export.pbr_materials import export_pbr_material_package
+
+                        pbr_result = export_pbr_material_package(
+                            model,
+                            Path(fbx_path).parent,
+                            tex_cache,
+                            target=compatibility_profile,
+                            asset_stem=Path(fbx_path).stem,
+                        )
+                        pbr_materials = {
+                            (
+                                str(material.get("mesh") or "").casefold(),
+                                int(material.get("slot", 0)),
+                            ): material
+                            for material in pbr_result.materials
+                        }
+                        texture_paths = {}
+                        for material in pbr_result.materials:
+                            source_name = str(material.get("source_diffuse") or "")
+                            base_color_path = str(
+                                material.get("channels", {})
+                                .get("base_color", {})
+                                .get("path", "")
+                            )
+                            if source_name and base_color_path:
+                                texture_paths.setdefault(source_name, base_color_path)
+                    else:
+                        texture_paths = self._export_fbx_textures_to_dir(
+                            model,
+                            Path(fbx_path).parent / "textures",
+                            tex_cache,
+                            Path(fbx_path).parent,
+                        )
                 ascii_kwargs = {
                     "base_skeleton_model": base_skeleton_model,
                     "texture_paths": texture_paths,
                 }
+                if pbr_materials:
+                    ascii_kwargs["pbr_materials"] = pbr_materials
                 # Preserve the long-standing monkeypatch/backend seam for the
                 # standard writer while passing the new option only when needed.
                 if compatibility_profile != self.COMPATIBILITY_STANDARD:
@@ -1495,11 +1564,59 @@ class FBXExporter:
                         "unreal"
                     ),
                     compatibility_profile=compatibility_profile,
+                    pbr=(pbr_result.summary() if pbr_result is not None else None),
                 )
                 log.info(f"GhostRigger FBX manifest exported: {manifest_path.name}")
             except Exception as exc:
                 log.warning(f"Could not write GhostRigger FBX manifest: {exc}")
         return bool(ok)
+
+    @staticmethod
+    def _skin_export_contract_errors(model: KotorModel) -> List[str]:
+        """Return blocking FBX skin errors without mutating the source model.
+
+        FBX importers require one normalized influence row per skinned control
+        point.  Inventing a root-bone weight when MDX data is missing produces a
+        file that imports but cannot reproduce the authored deformation.  Treat
+        that condition as a hard export error so an adapter or resource lookup
+        regression cannot masquerade as a valid animated FBX.
+        """
+        errors: List[str] = []
+        for node in model.all_nodes():
+            if not bool(getattr(node, "is_skin", False)):
+                continue
+            vertices = list(getattr(node, "vertices", None) or [])
+            if not vertices:
+                continue
+            node_name = str(getattr(node, "name", "") or "<unnamed skin>")
+            bone_map = list(getattr(node, "bone_map", None) or [])
+            skin_rows = list(getattr(node, "skin_data", None) or [])
+            if not any(str(name or "").strip() for name in bone_map):
+                errors.append(f"{node_name}: no usable bone palette was recovered")
+            if len(skin_rows) != len(vertices):
+                errors.append(
+                    f"{node_name}: {len(skin_rows)} skin row(s) for "
+                    f"{len(vertices)} vertices"
+                )
+                continue
+            zero_weight_vertices: List[int] = []
+            for vertex_index, row in enumerate(skin_rows):
+                influences = list(getattr(row, "influences", None) or [])
+                has_positive_weight = any(
+                    math.isfinite(float(getattr(influence, "weight", 0.0) or 0.0))
+                    and float(getattr(influence, "weight", 0.0) or 0.0) > 1.0e-6
+                    for influence in influences
+                )
+                if not has_positive_weight:
+                    zero_weight_vertices.append(vertex_index)
+            if zero_weight_vertices:
+                preview = ", ".join(str(index) for index in zero_weight_vertices[:8])
+                suffix = "..." if len(zero_weight_vertices) > 8 else ""
+                errors.append(
+                    f"{node_name}: {len(zero_weight_vertices)} zero-weight "
+                    f"vertex row(s) ({preview}{suffix})"
+                )
+        return errors
 
     @staticmethod
     def _export_fbx_textures_to_dir(
@@ -1675,6 +1792,7 @@ class FBXExporter:
     def _export_fbx_ascii(self, model: KotorModel, fbx_path: str,
                           base_skeleton_model: 'Optional[KotorModel]' = None,
                           texture_paths: 'Optional[Dict[str, str]]' = None,
+                          pbr_materials: 'Optional[Dict[Tuple[str, int], dict]]' = None,
                           compatibility_profile: str = "standard") -> bool:
         """
         Write FBX ASCII 7.4 file.  No external dependencies required.
@@ -1704,6 +1822,7 @@ class FBXExporter:
         """
         compatibility_profile = self.normalize_compatibility_profile(compatibility_profile)
         texture_paths = texture_paths or {}
+        pbr_materials = pbr_materials or {}
         unit_scale_factor = 100.0 if compatibility_profile in {
             self.COMPATIBILITY_UNITY,
             self.COMPATIBILITY_UNREAL,
@@ -2182,72 +2301,156 @@ class FBXExporter:
         # Texture + Video objects (one per unique texture name)
         # FBX requires explicit Texture + Video objects to resolve material texture maps.
         # Without these, UE5 imports the geometry but leaves materials untextured.
-        _tex_obj_ids: Dict[str, int] = {}   # tex_name → Texture object ID
-        _tex_vid_ids: Dict[str, int] = {}   # tex_name → Video object ID
-        _seen_tex_names: set = set()
+        _tex_obj_ids: Dict[Tuple[str, int, int], int] = {}
+        _tex_vid_ids: Dict[Tuple[str, int, int], int] = {}
+        _pbr_tex_obj_ids: Dict[Tuple[str, int, str], int] = {}
+        _pbr_tex_vid_ids: Dict[Tuple[str, int, str], int] = {}
+        _pbr_by_binding = {
+            (str(mesh_name).casefold(), int(slot)): material
+            for (mesh_name, slot), material in pbr_materials.items()
+        }
+
+        def _emit_texture_video(
+            texture_key: Tuple[str, int, str],
+            object_name: str,
+            texture_file: str,
+            wrap_u: int,
+            wrap_v: int,
+        ) -> None:
+            nonlocal _n_texture, _n_video
+            tex_obj_id = new_id()
+            vid_id = new_id()
+            _pbr_tex_obj_ids[texture_key] = tex_obj_id
+            _pbr_tex_vid_ids[texture_key] = vid_id
+            _n_video += 1
+            w(f'\tVideo: {vid_id}, "Video::{object_name}", "Clip" {{')
+            w(f'\t\tType: "Clip"')
+            w(f'\t\tProperties70:  {{')
+            w(f'\t\t\tP: "Path","KString","XRefUrl","","{texture_file}"')
+            w(f'\t\t}}')
+            w(f'\t\tUseMipMap: 1')
+            w(f'\t\tFilename: "{texture_file}"')
+            w(f'\t\tRelativeFilename: "{texture_file}"')
+            w(f'\t}}')
+            _n_texture += 1
+            w(f'\tTexture: {tex_obj_id}, "Texture::{object_name}", "" {{')
+            w(f'\t\tType: "TextureVideoClip"')
+            w(f'\t\tVersion: 202')
+            w(f'\t\tTextureName: "{object_name}"')
+            w(f'\t\tProperties70:  {{')
+            w(f'\t\t\tP: "UVSet","KString","","","UVMap"')
+            w(f'\t\t\tP: "UseMaterial","bool","","",1')
+            w(f'\t\t\tP: "WrapModeU","enum","","",{wrap_u}')
+            w(f'\t\t\tP: "WrapModeV","enum","","",{wrap_v}')
+            w(f'\t\t}}')
+            w(f'\t\tMedia: "{object_name}"')
+            w(f'\t\tFileName: "{texture_file}"')
+            w(f'\t\tRelativeFilename: "{texture_file}"')
+            w(f'\t}}')
+
         for n in mesh_nodes_list:
-            for material_node in material_nodes_by_mesh[n.name]:
+            for slot, material_node in enumerate(material_nodes_by_mesh[n.name]):
                 tname_tex = (material_node.texture_clean or '').strip()
-                if not (
-                    tname_tex
-                    and tname_tex.upper() not in ('NULL', 'BLACK', '')
-                    and tname_tex not in _seen_tex_names
-                ):
+                if not tname_tex or tname_tex.upper() in ('NULL', 'BLACK', ''):
                     continue
-                _seen_tex_names.add(tname_tex)
                 # FBX wrap enum: 0 = Repeat, 1 = Clamp.  KotOR/TXI stores this
                 # as clamp_s/clamp_t booleans; exporting it keeps Unity/Unreal
                 # from guessing on large tiled menu and room UVs.
                 wrap_u = 1 if bool(getattr(material_node, 'txi_clamp_s', False)) else 0
                 wrap_v = 1 if bool(getattr(material_node, 'txi_clamp_t', False)) else 0
-                tex_obj_id = new_id()
-                vid_id     = new_id()
-                _tex_obj_ids[tname_tex] = tex_obj_id
-                _tex_vid_ids[tname_tex] = vid_id
-                texture_file = texture_paths.get(tname_tex, f"{tname_tex}.tga")
-                # Video (file reference)
-                _n_video += 1
-                w(f'\tVideo: {vid_id}, "Video::{tname_tex}", "Clip" {{')
-                w(f'\t\tType: "Clip"')
-                w(f'\t\tProperties70:  {{')
-                w(f'\t\t\tP: "Path","KString","XRefUrl","","{texture_file}"')
-                w(f'\t\t}}')
-                w(f'\t\tUseMipMap: 0')
-                w(f'\t\tFilename: "{texture_file}"')
-                w(f'\t\tRelativeFilename: "{texture_file}"')
-                w(f'\t}}')
-                # Texture object
-                _n_texture += 1
-                w(f'\tTexture: {tex_obj_id}, "Texture::{tname_tex}", "" {{')
-                w(f'\t\tType: "TextureVideoClip"')
-                w(f'\t\tVersion: 202')
-                w(f'\t\tTextureName: "{tname_tex}"')
-                w(f'\t\tProperties70:  {{')
-                w(f'\t\t\tP: "UVSet","KString","","","UVMap"')
-                w(f'\t\t\tP: "UseMaterial","bool","","",1')
-                w(f'\t\t\tP: "WrapModeU","enum","","",{wrap_u}')
-                w(f'\t\t\tP: "WrapModeV","enum","","",{wrap_v}')
-                w(f'\t\t}}')
-                w(f'\t\tMedia: "{tname_tex}"')
-                w(f'\t\tFileName: "{texture_file}"')
-                w(f'\t\tRelativeFilename: "{texture_file}"')
-                w(f'\t}}')
+                texture_key = (tname_tex, wrap_u, wrap_v)
+                if texture_key not in _tex_obj_ids:
+                    tex_obj_id = new_id()
+                    vid_id     = new_id()
+                    _tex_obj_ids[texture_key] = tex_obj_id
+                    _tex_vid_ids[texture_key] = vid_id
+                    texture_file = texture_paths.get(tname_tex, f"{tname_tex}.tga")
+                    object_name = f"{tname_tex}_Wrap{wrap_u}{wrap_v}"
+                    # Video (file reference)
+                    _n_video += 1
+                    w(f'\tVideo: {vid_id}, "Video::{object_name}", "Clip" {{')
+                    w(f'\t\tType: "Clip"')
+                    w(f'\t\tProperties70:  {{')
+                    w(f'\t\t\tP: "Path","KString","XRefUrl","","{texture_file}"')
+                    w(f'\t\t}}')
+                    w(f'\t\tUseMipMap: 0')
+                    w(f'\t\tFilename: "{texture_file}"')
+                    w(f'\t\tRelativeFilename: "{texture_file}"')
+                    w(f'\t}}')
+                    # Texture object
+                    _n_texture += 1
+                    w(f'\tTexture: {tex_obj_id}, "Texture::{object_name}", "" {{')
+                    w(f'\t\tType: "TextureVideoClip"')
+                    w(f'\t\tVersion: 202')
+                    w(f'\t\tTextureName: "{object_name}"')
+                    w(f'\t\tProperties70:  {{')
+                    w(f'\t\t\tP: "UVSet","KString","","","UVMap"')
+                    w(f'\t\t\tP: "UseMaterial","bool","","",1')
+                    w(f'\t\t\tP: "WrapModeU","enum","","",{wrap_u}')
+                    w(f'\t\t\tP: "WrapModeV","enum","","",{wrap_v}')
+                    w(f'\t\t}}')
+                    w(f'\t\tMedia: "{object_name}"')
+                    w(f'\t\tFileName: "{texture_file}"')
+                    w(f'\t\tRelativeFilename: "{texture_file}"')
+                    w(f'\t}}')
+
+                binding = (n.name.casefold(), slot)
+                pbr_material = _pbr_by_binding.get(binding) or {}
+                pbr_channels = pbr_material.get("channels", {})
+                for role, suffix in (
+                    ("normal", "Normal"),
+                    ("orm", "ORM"),
+                    ("metallic_smoothness", "MetallicSmoothness"),
+                    ("ambient_occlusion", "AO"),
+                ):
+                    role_path = str(pbr_channels.get(role, {}).get("path", "") or "")
+                    if role_path:
+                        _emit_texture_video(
+                            (binding[0], binding[1], role),
+                            f"{tname_tex}_{n.name}_{slot}_{suffix}",
+                            role_path,
+                            wrap_u,
+                            wrap_v,
+                        )
 
         # Material objects
         for n in mesh_nodes_list:
-            for material_node, mid in zip(material_nodes_by_mesh[n.name], mat_ids[n.name]):
+            for slot, (material_node, mid) in enumerate(
+                zip(material_nodes_by_mesh[n.name], mat_ids[n.name])
+            ):
                 tname = material_node.texture_clean or material_node.name
                 w(f'\tMaterial: {mid}, "Material::{tname}", "" {{')
                 w('\t\tVersion: 102')
                 w(f'\t\tShadingModel: "Phong"')
                 w('\t\tMultiLayer: 0')
                 w('\t\tProperties70:  {')
+                e = material_node.selfillum
+                w(f'\t\t\tP: "EmissiveColor","ColorRGB","Color","",{e[0]:.4f},{e[1]:.4f},{e[2]:.4f}')
+                w('\t\t\tP: "EmissiveFactor","double","Number","",1')
                 d = material_node.diffuse
                 w(f'\t\t\tP: "DiffuseColor","ColorRGB","Color","",{d[0]:.4f},{d[1]:.4f},{d[2]:.4f}')
                 s = material_node.specular
                 w(f'\t\t\tP: "SpecularColor","ColorRGB","Color","",{s[0]:.4f},{s[1]:.4f},{s[2]:.4f}')
                 w(f'\t\t\tP: "Shininess","double","Number","",{material_node.shininess:.2f}')
                 w(f'\t\t\tP: "Opacity","double","Number","",{material_node.alpha:.4f}')
+                pbr_material = _pbr_by_binding.get((n.name.casefold(), slot)) or {}
+                if pbr_material:
+                    factors = pbr_material.get("factors", {})
+                    channels = pbr_material.get("channels", {})
+                    normal_y = str(channels.get("normal", {}).get("normal_y", ""))
+                    alpha_mode = str(pbr_material.get("alpha", {}).get("mode", "OPAQUE"))
+                    blend_operation = str(
+                        pbr_material.get("alpha", {}).get("blend_operation", alpha_mode)
+                    )
+                    shader_name = str(pbr_material.get("shader") or "")
+                    w(f'\t\t\tP: "GhostRiggerPBRShader","KString","","","{shader_name}"')
+                    w(f'\t\t\tP: "GhostRiggerMetallic","double","Number","",{float(factors.get("metallic", 0.0)):.6f}')
+                    w(f'\t\t\tP: "GhostRiggerRoughness","double","Number","",{float(factors.get("roughness", 0.8)):.6f}')
+                    w(f'\t\t\tP: "GhostRiggerNormalY","KString","","","{normal_y}"')
+                    w(f'\t\t\tP: "GhostRiggerAlphaMode","KString","","","{alpha_mode}"')
+                    w(f'\t\t\tP: "GhostRiggerBlendOperation","KString","","","{blend_operation}"')
+                    w(f'\t\t\tP: "GhostRiggerBaseColorSpace","KString","","","sRGB"')
+                    w(f'\t\t\tP: "GhostRiggerDataColorSpace","KString","","","linear"')
                 w('\t\t}')
                 w('\t}')  # end Material
 
@@ -2436,14 +2639,6 @@ class FBXExporter:
         _model_cls_int = int(_mt_raw) if _mt_raw is not None else 4
         _has_any_skin = any(n.is_skin for n in mesh_nodes_list)
         _is_character_model = (_model_cls_int == 4 or _has_any_skin)
-        _skin_bone_names_lower = {
-            str(bname).lower()
-            for _skin_node in mesh_nodes_list
-            if _skin_node.is_skin
-            for bname in (_skin_node.bone_map or [])
-            if bname
-        }
-
         skeleton_nodes = []
         for n in model.all_nodes():
             if n.type_label == 'dummy':
@@ -2474,11 +2669,13 @@ class FBXExporter:
         # Skeleton/joint model nodes (root + all bone nodes)
         for n in skeleton_nodes:
             nid = node_ids[n.name]
-            # Root node (flags=HEADER) → "Root"; child joint nodes → "LimbNode"
-            is_root = (n.parent is None) or (n.flags == int(NodeFlags.HEADER))
-            is_skin_influence = n.name.lower() in _skin_bone_names_lower
-            fbx_node_type = 'LimbNode' if (not is_root or is_skin_influence) else 'Null'
-            w(f'\tModel: {nid}, "Model::{n.name}", "{fbx_node_type}" {{')
+            # Every member of a skinned skeleton chain must be an FBX LimbNode,
+            # including KOTOR's HEADER-flagged model/cutscene/root dummies.
+            # Unreal's legacy importer starts at the highest cluster ancestor and
+            # recurses only while IsUnrealBone() remains true.  Emitting those
+            # ancestors as Null nodes leaves valid clusters with an empty
+            # SortedLinks array and UE reports the mesh as having "no bones".
+            w(f'\tModel: {nid}, "Model::{n.name}", "LimbNode" {{')
             w('\t\tVersion: 232')
             w('\t\tProperties70:  {')
             px, py, pz = n.position
@@ -2497,7 +2694,7 @@ class FBXExporter:
         # Root skeleton gets Size=1, Type="Root"; children get Type="Limb".
         for n in skeleton_nodes:
             attr_id = skel_attr_ids[n.name]
-            is_root = (n.parent is None) or (n.flags == int(NodeFlags.HEADER))
+            is_root = n.parent is None
             limb_size = _skeleton_display_size(n, fallback=0.25 if is_root else 0.15)
             w(f'\tNodeAttribute: {attr_id}, "NodeAttribute::{n.name}", "LimbNode" {{')
             w(f'\t\tTypeFlags: "Skeleton"')
@@ -3109,28 +3306,6 @@ class FBXExporter:
         for _di, _dl in enumerate(_defs):
             lines.insert(_definitions_insert_idx + _di, _dl)
 
-        # ── Takes section (legacy Blender / MotionBuilder / UE4 compatibility) ─────
-        # FBX 7.4 readers such as Blender's FBX importer, MotionBuilder, and UE4 use
-        # the Takes block to enumerate animation clips.  UE5 uses AnimStack directly
-        # but emitting Takes keeps compatibility with the full DCC pipeline.
-        # All animations (even those without keyframe nodes) must be listed here so
-        # that UE5 sees the complete animation library from the KotOR base skeleton.
-        w('')
-        w('Takes:  {')
-        if model.animations:
-            first_anim = model.animations[0]
-            w(f'\tCurrent: "{first_anim.name}"')
-            for anim in model.animations:
-                anim_length_ticks_t = int(anim.length * FBX_TICKS_PER_SEC)
-                w(f'\tTake: "{anim.name}" {{')
-                w(f'\t\tFileName: "{anim.name}.tak"')
-                w(f'\t\tLocalTime: 0,{anim_length_ticks_t}')
-                w(f'\t\tReferenceTime: 0,{anim_length_ticks_t}')
-                w(f'\t}}')
-        else:
-            w('\tCurrent: ""')
-        w('}')
-
         # ── Connections section ────────────────────────────────────────
         w('')
         w('Connections:  {')
@@ -3219,14 +3394,31 @@ class FBXExporter:
         # Texture → material connections
         # Links each Texture object to its Material via the "DiffuseColor" property slot.
         for n in mesh_nodes_list:
-            for material_node, material_id in zip(material_nodes_by_mesh[n.name], mat_ids[n.name]):
+            for slot, (material_node, material_id) in enumerate(
+                zip(material_nodes_by_mesh[n.name], mat_ids[n.name])
+            ):
                 tname = (material_node.texture_clean or '').strip()
-                if tname and tname in _tex_obj_ids:
-                    tex_oid = _tex_obj_ids[tname]
+                wrap_u = 1 if bool(getattr(material_node, 'txi_clamp_s', False)) else 0
+                wrap_v = 1 if bool(getattr(material_node, 'txi_clamp_t', False)) else 0
+                if tname and (tname, wrap_u, wrap_v) in _tex_obj_ids:
+                    tex_oid = _tex_obj_ids[(tname, wrap_u, wrap_v)]
                     w(f'\tC: "OP",{tex_oid},{material_id},"DiffuseColor"')
+                for role, property_name in (
+                    ("normal", "NormalMap"),
+                    ("orm", "OcclusionRoughnessMetallic"),
+                    ("metallic_smoothness", "MetallicSmoothness"),
+                    ("ambient_occlusion", "AmbientOcclusion"),
+                ):
+                    tex_oid = _pbr_tex_obj_ids.get((n.name.casefold(), slot, role))
+                    if tex_oid:
+                        w(f'\tC: "OP",{tex_oid},{material_id},"{property_name}"')
         # Video → Texture connections
-        for tname, tex_oid in _tex_obj_ids.items():
-            vid_id = _tex_vid_ids.get(tname)
+        for texture_key, tex_oid in _tex_obj_ids.items():
+            vid_id = _tex_vid_ids.get(texture_key)
+            if vid_id:
+                w(f'\tC: "OO",{vid_id},{tex_oid}')
+        for texture_key, tex_oid in _pbr_tex_obj_ids.items():
+            vid_id = _pbr_tex_vid_ids.get(texture_key)
             if vid_id:
                 w(f'\tC: "OO",{vid_id},{tex_oid}')
 
@@ -3235,6 +3427,27 @@ class FBXExporter:
             w(conn_line)
 
         w('}')  # end Connections
+
+        # ── Takes section (legacy Blender / MotionBuilder / UE4 compatibility) ─────
+        # FBX section order is semantic for Autodesk's parser: Connections must
+        # precede Takes.  Placing Takes first caused Maya to materialize no scene
+        # objects and left Unreal's cluster links unresolved even though the raw
+        # OO records were present in the text file.
+        w('')
+        w('Takes:  {')
+        if model.animations:
+            first_anim = model.animations[0]
+            w(f'\tCurrent: "{first_anim.name}"')
+            for anim in model.animations:
+                anim_length_ticks_t = int(anim.length * FBX_TICKS_PER_SEC)
+                w(f'\tTake: "{anim.name}" {{')
+                w(f'\t\tFileName: "{anim.name}.tak"')
+                w(f'\t\tLocalTime: 0,{anim_length_ticks_t}')
+                w(f'\t\tReferenceTime: 0,{anim_length_ticks_t}')
+                w(f'\t}}')
+        else:
+            w('\tCurrent: ""')
+        w('}')
 
         # Write to file
         content = '\n'.join(lines)
@@ -3815,6 +4028,67 @@ class GLTFImporter:
 #  GLTF 2.0 / GLB Exporter
 # ──────────────────────────────────────────────────────────────────────
 
+def _gltf_unique_node_name(name: str, occurrence: int) -> str:
+    """Return a stable glTF name for one occurrence of a KOTOR node name.
+
+    KOTOR permits duplicate node names and addresses their animation tracks by
+    occurrence inside the model/animation DAG.  DCC armatures require unique
+    bone names, even though glTF itself targets nodes by index.  Keep the first
+    authored name intact and suffix later occurrences deterministically.
+    """
+    authored = str(name or "node")
+    return authored if occurrence == 0 else f"{authored}__dup{occurrence + 1}"
+
+
+def _gltf_absolute_translation_samples(
+    bind_position,
+    delta_values,
+    animation_scale: float,
+):
+    """Convert KOTOR rest-local position deltas to absolute glTF TRS values."""
+    bind = tuple(float(value) for value in (bind_position or (0.0, 0.0, 0.0))[:3])
+    scale = float(animation_scale or 1.0)
+    return [
+        [
+            bind[axis] + scale * float(value[axis] if len(value) > axis else 0.0)
+            for axis in range(3)
+        ]
+        for value in delta_values
+    ]
+
+
+def _gltf_kotor_inverse_bind_matrix(qbone, tbone) -> list[list[float]]:
+    """Return one Odyssey qBone/tBone inverse bind as a row-major MAT4.
+
+    The four qBone floats are stored in on-disk ``w, x, y, z`` order even
+    though PyKotor exposes them through a Vector4-shaped container.  Reone and
+    Ghost Studio's validated G5 palette both consume ``T(tBone) * R(qBone)``
+    directly as the inverse bind; it must not be inverted a second time.
+    """
+    raw_w, raw_x, raw_y, raw_z = (float(value) for value in qbone[:4])
+    tx, ty, tz = (float(value) for value in tbone[:3])
+    magnitude = math.sqrt(
+        raw_w * raw_w + raw_x * raw_x + raw_y * raw_y + raw_z * raw_z
+    )
+    if magnitude <= 1.0e-12:
+        raw_w, raw_x, raw_y, raw_z = 1.0, 0.0, 0.0, 0.0
+    else:
+        raw_w /= magnitude
+        raw_x /= magnitude
+        raw_y /= magnitude
+        raw_z /= magnitude
+    x, y, z, w = raw_x, raw_y, raw_z, raw_w
+    xx, yy, zz = x * x, y * y, z * z
+    xy, xz, yz = x * y, x * z, y * z
+    wx, wy, wz = w * x, w * y, w * z
+    return [
+        [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy), tx],
+        [2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx), ty],
+        [2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy), tz],
+        [0.0, 0.0, 0.0, 1.0],
+    ]
+
+
 class GLTFExporter:
     """
     Export KotorModel to GLTF 2.0 / GLB.
@@ -3822,8 +4096,9 @@ class GLTFExporter:
     Uses pygltflib for structured output. Falls back to manual JSON+binary
     GLTF 2.0 if pygltflib is not available.
 
-    UV convention: KotOR stores V bottom-up; GLTF stores V top-down.
-    We flip V on export: v_gltf = 1.0 - v_kotor.
+    UV convention: preserve the decoded KOTOR UV rows in glTF.  Conforming
+    glTF importers perform the image/UV origin conversion at interchange time;
+    pre-flipping V here mirrors the character atlas in Blender and Unreal.
     """
 
     @staticmethod
@@ -3840,11 +4115,44 @@ class GLTFExporter:
         xy, xz, yz = x * y, x * z, y * z
         wx, wy, wz = w * x, w * y, w * z
         return [
-            [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy), 0.0],
-            [2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx), 0.0],
-            [2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy), 0.0],
-            [float(wp[0]), float(wp[1]), float(wp[2]), 1.0],
+            [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy), float(wp[0])],
+            [2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx), float(wp[1])],
+            [2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy), float(wp[2])],
+            [0.0, 0.0, 0.0, 1.0],
         ]
+
+    @staticmethod
+    def _multiply_4x4(left: list[list[float]], right: list[list[float]]) -> list[list[float]]:
+        return [
+            [
+                sum(float(left[row][k]) * float(right[k][col]) for k in range(4))
+                for col in range(4)
+            ]
+            for row in range(4)
+        ]
+
+    @staticmethod
+    def _transform_point_4x4(matrix: list[list[float]], point) -> tuple[float, float, float]:
+        """Transform one 3D point by a row-major affine matrix."""
+        x, y, z = (float(value) for value in point[:3])
+        return tuple(
+            sum(float(matrix[row][axis]) * value for axis, value in enumerate((x, y, z)))
+            + float(matrix[row][3])
+            for row in range(3)
+        )
+
+    @staticmethod
+    def _transform_direction_4x4(matrix: list[list[float]], direction) -> tuple[float, float, float]:
+        """Transform and normalize one direction by an affine matrix."""
+        x, y, z = (float(value) for value in direction[:3])
+        transformed = [
+            sum(float(matrix[row][axis]) * value for axis, value in enumerate((x, y, z)))
+            for row in range(3)
+        ]
+        magnitude = math.sqrt(sum(value * value for value in transformed))
+        if magnitude <= 1.0e-12:
+            return 0.0, 0.0, 1.0
+        return tuple(value / magnitude for value in transformed)
 
     @staticmethod
     def _invert_4x4(m: list[list[float]]) -> list[list[float]]:
@@ -3988,71 +4296,70 @@ class GLTFExporter:
         # We add ALL model nodes (dummy + mesh) to gltf.nodes so that
         # the skeleton hierarchy is intact, then add a skin referencing joints.
         all_model_nodes = list(model.all_nodes()) if model.root_node else []
-        gltf_node_idx: Dict[str, int] = {}   # model-node-name → gltf node index
+        gltf_node_idx: Dict[str, int] = {}   # first model-node-name → gltf node index
+        gltf_node_indices: Dict[str, List[int]] = {}  # name → every occurrence
+        model_nodes_by_name: Dict[str, List[Any]] = {}
+        gltf_model_node_idx: Dict[int, int] = {}  # object identity → gltf node index
+        node_name_occurrences: Dict[str, int] = {}
 
         for mn in all_model_nodes:
+            authored_name = str(mn.name or "node")
+            name_key = authored_name.casefold()
+            occurrence = node_name_occurrences.get(name_key, 0)
+            node_name_occurrences[name_key] = occurrence + 1
             pos_ = list(mn.position) if hasattr(mn, 'position') else [0.0, 0.0, 0.0]
             rot_ = list(mn.rotation) if hasattr(mn, 'rotation') else [0.0, 0.0, 0.0, 1.0]
             skel_node = pygltflib.Node(
-                name=mn.name,
+                name=_gltf_unique_node_name(authored_name, occurrence),
                 translation=pos_,
                 rotation=rot_,
             )
             idx_ = len(gltf.nodes)
             gltf.nodes.append(skel_node)
-            gltf_node_idx[mn.name] = idx_
+            gltf_model_node_idx[id(mn)] = idx_
+            gltf_node_idx.setdefault(authored_name, idx_)
             # Also register lowercase for case-insensitive bone_map lookups
-            gltf_node_idx[mn.name.lower()] = idx_
+            gltf_node_idx.setdefault(name_key, idx_)
+            gltf_node_indices.setdefault(name_key, []).append(idx_)
+            model_nodes_by_name.setdefault(name_key, []).append(mn)
 
         # Wire parent→child relationships in the GLTF node hierarchy
         for mn in all_model_nodes:
-            if mn.parent and mn.parent.name in gltf_node_idx:
-                parent_gltf_idx = gltf_node_idx[mn.parent.name]
-                child_gltf_idx  = gltf_node_idx[mn.name]
+            child_gltf_idx = gltf_model_node_idx[id(mn)]
+            if mn.parent and id(mn.parent) in gltf_model_node_idx:
+                parent_gltf_idx = gltf_model_node_idx[id(mn.parent)]
                 parent_gltf_node = gltf.nodes[parent_gltf_idx]
                 if parent_gltf_node.children is None:
                     parent_gltf_node.children = []
                 parent_gltf_node.children.append(child_gltf_idx)
-            elif mn.parent is None and mn.name in gltf_node_idx:
+            elif mn.parent is None:
                 # Root node → add to scene
-                scene.nodes.append(gltf_node_idx[mn.name])
+                scene.nodes.append(child_gltf_idx)
 
-        # Build a single skin encompassing all dummy-node joints
-        joint_indices = [gltf_node_idx[mn.name]
-                         for mn in all_model_nodes
-                         if mn.name in gltf_node_idx]
-        gltf_skin = None
-        if joint_indices:
-            gltf_skin_obj = pygltflib.Skin(name=model.name + "_skin", joints=joint_indices)
+        # Odyssey stores qBone/tBone bind palettes per SKIN mesh.  A single
+        # hierarchy-derived glTF Skin cannot represent that contract: it makes
+        # every humanoid section rotate around the wrong pivot even though the
+        # rest pose appears intact.  Each skinned mesh receives its own glTF
+        # Skin below, preserving its compact palette and exact inverse binds.
+        root_joint_idx = (
+            gltf_model_node_idx.get(id(model.root_node))
+            if getattr(model, 'root_node', None) is not None
+            else None
+        )
+        skin_origin_world = (
+            self._node_bind_world_matrix_4x4(model.root_node)
+            if getattr(model, 'root_node', None) is not None
+            else [[1.0 if row == col else 0.0 for col in range(4)] for row in range(4)]
+        )
+        skin_origin_inverse = self._invert_4x4(skin_origin_world)
 
-            # Compute inverse bind matrices for each joint (glTF 2.0 §5.26).
-            # Without these, Blender/Unreal import the armature + weights but
-            # the bind pose is undefined and deformation is wrong.
-            ibm_buf = bytearray()
-            for mn in all_model_nodes:
-                if mn.name not in gltf_node_idx:
-                    continue
-                gni = gltf_node_idx[mn.name]
-                if gni not in joint_indices:
-                    continue
-                # Build the 4x4 world bind matrix for this bone
-                bone_matrix = self._node_bind_world_matrix_4x4(mn)
-                # Invert it
-                inv = self._invert_4x4(bone_matrix)
-                # glTF stores inverseBindMatrices as column-major MAT4
-                for col in range(4):
-                    for row in range(4):
-                        ibm_buf += st.pack('<f', float(inv[col][row]))
-            if ibm_buf and len(joint_indices) > 0:
-                ibm_acc = _add_accessor(
-                    bytes(ibm_buf), len(joint_indices), "MAT4", 5126,
-                )
-                gltf_skin_obj.inverseBindMatrices = ibm_acc
+        from src.core.export.pbr_materials import (
+            build_pbr_material_payload,
+            pbr_material_identity,
+        )
 
-            skin_idx = len(gltf.skins)
-            gltf.skins.append(gltf_skin_obj)
-            gltf_skin = skin_idx
-
+        pbr_payload_cache = {}
+        pbr_texture_cache = {}
         nodes = _iter_visible_mesh_nodes(model)
         for node in nodes:
             verts   = node.vertices or []
@@ -4065,11 +4372,34 @@ class GLTFExporter:
             n_v = len(verts)
             n_f = len(faces)
 
+            skin_data_for_node = list(getattr(node, 'skin_data', None) or [])
+            bone_map_for_node = list(getattr(node, 'bone_map', []) or [])
+            # Preserve Odyssey's authored mesh-local bind for humanoid body and
+            # head sections.  Blender/Unreal consolidate shared joints into one
+            # armature; rebasing those sections to the model root stretches or
+            # detaches the head even though a spec-only evaluator can reproduce
+            # the rest pose.  Preserve the complete authored skin contract here;
+            # DCC-specific cleanup of malformed visible helper geometry belongs
+            # in the Blender normalization stage after the armature is built.
+            world_baked_skin = False
+            mesh_world = self._node_bind_world_matrix_4x4(node)
+            skin_bake_matrix = self._multiply_4x4(skin_origin_inverse, mesh_world)
+            export_verts = (
+                [self._transform_point_4x4(skin_bake_matrix, vertex) for vertex in verts]
+                if world_baked_skin
+                else verts
+            )
+            export_normals = (
+                [self._transform_direction_4x4(skin_bake_matrix, normal) for normal in normals]
+                if world_baked_skin and len(normals) == n_v
+                else normals
+            )
+
             # Position buffer (float32, VEC3)
             pos_buf = bytearray()
-            for v in verts:
+            for v in export_verts:
                 pos_buf += st.pack('<fff', float(v[0]), float(v[1]), float(v[2]))
-            px = [v[0] for v in verts]; py = [v[1] for v in verts]; pz = [v[2] for v in verts]
+            px = [v[0] for v in export_verts]; py = [v[1] for v in export_verts]; pz = [v[2] for v in export_verts]
             pos_acc = _add_accessor(bytes(pos_buf), n_v, "VEC3", 5126,
                                     [min(px), min(py), min(pz)],
                                     [max(px), max(py), max(pz)],
@@ -4077,18 +4407,19 @@ class GLTFExporter:
 
             # Normal buffer (float32, VEC3)
             norm_acc = None
-            if len(normals) == n_v:
+            if len(export_normals) == n_v:
                 norm_buf = bytearray()
-                for n in normals:
+                for n in export_normals:
                     norm_buf += st.pack('<fff', float(n[0]), float(n[1]), float(n[2]))
                 norm_acc = _add_accessor(bytes(norm_buf), n_v, "VEC3", 5126)
 
-            # UV buffer (float32, VEC2) — flip V for GLTF
+            # UV buffer (float32, VEC2). Preserve KOTOR's authored UV rows;
+            # glTF importers handle the texture-origin convention themselves.
             uv_acc = None
             if len(uvs) == n_v:
                 uv_buf = bytearray()
                 for u in uvs:
-                    uv_buf += st.pack('<ff', float(u[0]), 1.0 - float(u[1]))
+                    uv_buf += st.pack('<ff', float(u[0]), float(u[1]))
                 uv_acc = _add_accessor(bytes(uv_buf), n_v, "VEC2", 5126)
 
             # Index buffer (uint32, SCALAR)
@@ -4105,54 +4436,105 @@ class GLTFExporter:
             if uv_acc is not None:
                 prim_attrs.TEXCOORD_0 = uv_acc
 
-            # Skin weights (JOINTS_0 + WEIGHTS_0) for skin nodes
-            # GLTF 2.0 §3.7.2: up to 4 influences per vertex as UNSIGNED_BYTE (5121)
-            # joints and FLOAT (5126) weights.
-            #
-            # IMPORTANT: JOINTS_0 values must be indices into skin.joints[], NOT
-            # global gltf.nodes[] indices.  KotOR bone_map[bone_index] gives the
-            # bone name; we look that name up in gltf_node_idx to get the GLTF
-            # node index, then find its position inside joint_indices (the skin's
-            # joint list).  Build a local lookup: bone_map_index → joint_list_pos.
+            # Skin weights (JOINTS_0 + WEIGHTS_0) and the mesh-local Odyssey
+            # inverse-bind palette. JOINTS_0 values are compact palette slots,
+            # which map one-to-one to this mesh's glTF Skin.joints list.
             joints_acc = weights_acc = None
+            mesh_skin_idx = None
             if getattr(node, 'is_skin', False):
-                skin_data = getattr(node, 'skin_data', None) or []
-                bone_map  = getattr(node, 'bone_map', []) or []
-                if skin_data and len(skin_data) == n_v and joint_indices:
-                    # Build bone_map_idx → joint_list_position lookup
-                    # joint_indices[i] = gltf_node_index for joint i
-                    _gltf_node_to_joint_pos = {gni: jpos
-                                               for jpos, gni in enumerate(joint_indices)}
-                    _bmap_to_joint: Dict[int, int] = {}
-                    for bi, bname in enumerate(bone_map):
-                        bname_l = bname.lower() if bname else ''
-                        # Find the gltf node index for this bone
-                        gni = gltf_node_idx.get(bname_l) or gltf_node_idx.get(bname)
-                        if gni is not None:
-                            _bmap_to_joint[bi] = _gltf_node_to_joint_pos.get(gni, 0)
-                        else:
-                            _bmap_to_joint[bi] = 0  # fallback: root joint
+                skin_data = skin_data_for_node
+                bone_map  = bone_map_for_node
+                if skin_data and len(skin_data) == n_v and bone_map:
+                    bone_node_indices = list(
+                        getattr(node, 'bone_node_indices', []) or []
+                    )
+                    qbones = list(getattr(node, 'qbone_list', []) or [])
+                    tbones = list(getattr(node, 'tbone_list', []) or [])
+                    compact_qt = (
+                        len(qbones) == len(bone_map)
+                        and len(tbones) == len(bone_map)
+                        and len(bone_map) < len(all_model_nodes)
+                    )
+                    palette_joints: List[int] = []
+                    palette_nodes: List[Any] = []
+                    palette_inverse_binds: List[list[list[float]]] = []
+                    mesh_world_inverse = self._invert_4x4(mesh_world)
+                    for palette_index, bname in enumerate(bone_map):
+                        name_key = str(bname or '').casefold()
+                        source_index = (
+                            int(bone_node_indices[palette_index])
+                            if palette_index < len(bone_node_indices)
+                            else -1
+                        )
+                        joint_node = None
+                        if 0 <= source_index < len(all_model_nodes):
+                            indexed = all_model_nodes[source_index]
+                            if str(getattr(indexed, 'name', '') or '').casefold() == name_key:
+                                joint_node = indexed
+                        if joint_node is None:
+                            candidates = model_nodes_by_name.get(name_key, [])
+                            if candidates:
+                                joint_node = candidates[0]
+                        joint_gltf_index = (
+                            gltf_model_node_idx.get(id(joint_node))
+                            if joint_node is not None
+                            else None
+                        )
+                        if joint_gltf_index is None:
+                            joint_gltf_index = root_joint_idx if root_joint_idx is not None else 0
+                            joint_node = model.root_node
+                        palette_joints.append(int(joint_gltf_index))
+                        palette_nodes.append(joint_node)
 
-                    joints_buf  = bytearray()
-                    weights_buf = bytearray()
-                    for sd in skin_data:
-                        infl = sd.influences if hasattr(sd, 'influences') else []
-                        # Gather up to 4 influences, sorted by weight descending
-                        infl_sorted = sorted(infl, key=lambda x: x.weight, reverse=True)[:4]
-                        js = [0, 0, 0, 0]
-                        ws = [0.0, 0.0, 0.0, 0.0]
-                        for ci, inf in enumerate(infl_sorted):
-                            # Remap from bone_map index → skin.joints[] position
-                            js[ci] = _bmap_to_joint.get(int(inf.bone_index), 0)
-                            ws[ci] = float(inf.weight)
-                        # Normalize weights to sum=1 (avoid precision drift)
-                        w_sum = sum(ws)
-                        if w_sum > 1e-6:
-                            ws = [x / w_sum for x in ws]
-                        joints_buf  += st.pack('<BBBB', *js)
-                        weights_buf += st.pack('<ffff', *ws)
-                    # Use UNSIGNED_SHORT (5123) for >255 joints, UNSIGNED_BYTE (5121) otherwise
-                    use_short_joints = len(joint_indices) > 255
+                        qt_index = palette_index if compact_qt else source_index
+                        if (
+                            0 <= qt_index < len(qbones)
+                            and qt_index < len(tbones)
+                            and len(qbones[qt_index]) >= 4
+                            and len(tbones[qt_index]) >= 3
+                        ):
+                            source_inverse_bind = _gltf_kotor_inverse_bind_matrix(
+                                qbones[qt_index], tbones[qt_index]
+                            )
+                            if world_baked_skin:
+                                inverse_bind = self._multiply_4x4(
+                                    self._multiply_4x4(
+                                        source_inverse_bind,
+                                        mesh_world_inverse,
+                                    ),
+                                    skin_origin_world,
+                                )
+                            else:
+                                inverse_bind = source_inverse_bind
+                        else:
+                            joint_world = self._node_bind_world_matrix_4x4(joint_node)
+                            inverse_bind = self._multiply_4x4(
+                                self._invert_4x4(joint_world),
+                                skin_origin_world if world_baked_skin else mesh_world,
+                            )
+                        palette_inverse_binds.append(inverse_bind)
+
+                    ibm_buf = bytearray()
+                    for inverse_bind in palette_inverse_binds:
+                        for col in range(4):
+                            for row in range(4):
+                                ibm_buf += st.pack('<f', float(inverse_bind[row][col]))
+                    ibm_acc = _add_accessor(
+                        bytes(ibm_buf), len(palette_joints), "MAT4", 5126,
+                    )
+                    skin_kwargs = {
+                        "name": f"{model.name}_{node.name}_skin",
+                        "joints": palette_joints,
+                        "inverseBindMatrices": ibm_acc,
+                    }
+                    if root_joint_idx is not None:
+                        skin_kwargs["skeleton"] = root_joint_idx
+                    mesh_skin_idx = len(gltf.skins)
+                    gltf.skins.append(pygltflib.Skin(**skin_kwargs))
+
+                    # Use UNSIGNED_SHORT (5123) for >255 joints,
+                    # UNSIGNED_BYTE (5121) otherwise.
+                    use_short_joints = len(palette_joints) > 255
                     joint_fmt = '<HHHH' if use_short_joints else '<BBBB'
                     joint_type = 5123 if use_short_joints else 5121
                     joints_buf  = bytearray()
@@ -4163,7 +4545,12 @@ class GLTFExporter:
                         js = [0, 0, 0, 0]
                         ws = [0.0, 0.0, 0.0, 0.0]
                         for ci, inf in enumerate(infl_sorted):
-                            js[ci] = _bmap_to_joint.get(int(inf.bone_index), 0)
+                            palette_slot = int(inf.bone_index)
+                            js[ci] = (
+                                palette_slot
+                                if 0 <= palette_slot < len(palette_joints)
+                                else 0
+                            )
                             ws[ci] = float(inf.weight)
                         w_sum = sum(ws)
                         if w_sum > 1e-6:
@@ -4182,35 +4569,82 @@ class GLTFExporter:
             tex_name = str(getattr(node, 'texture_clean', '') or
                            getattr(node, 'texture', '') or '').strip()
             if tex_name and tex_name.upper() not in ('NULL', 'BLACK', ''):
-                mat = pygltflib.Material(name=tex_name, doubleSided=False)
+                pbr_key = pbr_material_identity(node, target="gltf")
+                pbr_payload = pbr_payload_cache.get(pbr_key)
+                if pbr_payload is None:
+                    pbr_payload = build_pbr_material_payload(
+                        node,
+                        tex_cache,
+                        target="gltf",
+                        # Preserve the decoded image and authored UV rows.
+                        # Conforming importers perform the glTF texture-origin
+                        # conversion; pre-flipping either side mirrors atlases.
+                        flip_vertical=False,
+                    )
+                    pbr_payload_cache[pbr_key] = pbr_payload
+                mat = pygltflib.Material(
+                    name=tex_name,
+                    doubleSided=bool(getattr(node, 'two_sided', False)),
+                )
                 diff = getattr(node, 'diffuse', (1.0, 1.0, 1.0))
-                alpha_val = float(getattr(node, 'alpha', 1.0))
+                alpha_val = float(pbr_payload.alpha["factor"])
                 pbr = pygltflib.PbrMetallicRoughness(
                     baseColorFactor=[float(diff[0]), float(diff[1]),
                                      float(diff[2]), alpha_val],
-                    metallicFactor=0.0,
-                    roughnessFactor=0.8,
+                    metallicFactor=1.0,
+                    roughnessFactor=1.0,
                 )
-                # Embed texture as base64 PNG data URI if tex_cache available
-                uri = self._tex_to_base64_uri(tex_cache, tex_name)
-                if uri is not None:
-                    img_obj = pygltflib.Image(uri=uri, name=tex_name)
+                wrap_s = 33071 if bool(getattr(node, 'txi_clamp_s', False)) else 10497
+                wrap_t = 33071 if bool(getattr(node, 'txi_clamp_t', False)) else 10497
+
+                def _append_pbr_texture(role: str, suffix: str) -> int | None:
+                    texture_key = (pbr_key, role, wrap_s, wrap_t)
+                    if texture_key in pbr_texture_cache:
+                        return pbr_texture_cache[texture_key]
+                    uri = pbr_payload.data_uri(role)
+                    if uri is None:
+                        return None
+                    image_name = f"{tex_name}_{suffix}"
+                    img_obj = pygltflib.Image(uri=uri, name=image_name)
                     img_idx = len(gltf.images)
                     gltf.images.append(img_obj)
                     sampler = pygltflib.Sampler(
                         magFilter=9729, minFilter=9987,  # LINEAR, LINEAR_MIPMAP_LINEAR
-                        wrapS=10497, wrapT=10497,        # REPEAT
+                        wrapS=wrap_s, wrapT=wrap_t,
                     )
                     samp_idx = len(gltf.samplers)
                     gltf.samplers.append(sampler)
                     tex_obj = pygltflib.Texture(source=img_idx, sampler=samp_idx,
-                                                name=tex_name)
+                                                name=image_name)
                     tex_idx = len(gltf.textures)
                     gltf.textures.append(tex_obj)
-                    pbr.baseColorTexture = pygltflib.TextureInfo(index=tex_idx)
+                    pbr_texture_cache[texture_key] = tex_idx
+                    return tex_idx
+
+                base_color_idx = _append_pbr_texture("base_color", "BaseColor")
+                normal_idx = _append_pbr_texture("normal", "Normal")
+                orm_idx = _append_pbr_texture("orm", "ORM")
+                if base_color_idx is not None:
+                    pbr.baseColorTexture = pygltflib.TextureInfo(index=base_color_idx)
+                if orm_idx is not None:
+                    pbr.metallicRoughnessTexture = pygltflib.TextureInfo(index=orm_idx)
+                    occlusion_cls = getattr(pygltflib, "OcclusionTextureInfo", pygltflib.TextureInfo)
+                    mat.occlusionTexture = occlusion_cls(index=orm_idx)
+                if normal_idx is not None:
+                    normal_cls = getattr(pygltflib, "NormalMaterialTexture", pygltflib.TextureInfo)
+                    mat.normalTexture = normal_cls(index=normal_idx)
                 mat.pbrMetallicRoughness = pbr
-                if alpha_val < 0.999:
-                    mat.alphaMode = "BLEND"
+                mat.alphaMode = str(pbr_payload.alpha["mode"])
+                if mat.alphaMode == "MASK":
+                    mat.alphaCutoff = float(pbr_payload.alpha["cutoff"] or 0.5)
+                mat.extras = {
+                    "ghostriggerPbr": {
+                        "schema": "ghostrigger.pbr_material.v1",
+                        "shader": pbr_payload.shader["name"],
+                        "alpha": dict(pbr_payload.alpha),
+                        "conversion": dict(pbr_payload.conversion),
+                    }
+                }
                 mat_idx = len(gltf.materials)
                 gltf.materials.append(mat)
 
@@ -4225,12 +4659,31 @@ class GLTFExporter:
 
             # Attach mesh to the pre-built skeleton node if it exists,
             # otherwise create a standalone mesh node
-            if node.name in gltf_node_idx:
-                existing_gnode = gltf.nodes[gltf_node_idx[node.name]]
+            if id(node) in gltf_model_node_idx:
+                existing_gnode = gltf.nodes[gltf_model_node_idx[id(node)]]
                 existing_gnode.mesh = mesh_idx
                 # Assign skin for skinned meshes
-                if joints_acc is not None and gltf_skin is not None:
-                    existing_gnode.skin = gltf_skin
+                if joints_acc is not None and mesh_skin_idx is not None:
+                    existing_gnode.skin = mesh_skin_idx
+                    if world_baked_skin:
+                        # Skinned mesh leaves are exported in one common bind
+                        # space.  Reparent them to the model root with identity
+                        # local TRS so DCC importers do not have to reconcile
+                        # conflicting per-section bind origins.
+                        existing_index = gltf_model_node_idx[id(node)]
+                        if node.parent and id(node.parent) in gltf_model_node_idx:
+                            parent_node = gltf.nodes[gltf_model_node_idx[id(node.parent)]]
+                            if parent_node.children and existing_index in parent_node.children:
+                                parent_node.children.remove(existing_index)
+                        if root_joint_idx is not None and existing_index != root_joint_idx:
+                            root_node = gltf.nodes[root_joint_idx]
+                            if root_node.children is None:
+                                root_node.children = []
+                            if existing_index not in root_node.children:
+                                root_node.children.append(existing_index)
+                        existing_gnode.translation = [0.0, 0.0, 0.0]
+                        existing_gnode.rotation = [0.0, 0.0, 0.0, 1.0]
+                        existing_gnode.scale = [1.0, 1.0, 1.0]
             else:
                 pos = node.position or (0.0, 0.0, 0.0)
                 rot = node.rotation or (0.0, 0.0, 0.0, 1.0)
@@ -4239,7 +4692,7 @@ class GLTFExporter:
                     mesh=mesh_idx,
                     translation=list(pos),
                     rotation=list(rot),  # GLTF: [x, y, z, w]
-                    skin=gltf_skin if (joints_acc is not None) else None,
+                    skin=mesh_skin_idx if (joints_acc is not None) else None,
                 )
                 node_idx = len(gltf.nodes)
                 gltf.nodes.append(gnode)
@@ -4252,12 +4705,18 @@ class GLTFExporter:
                 ganim.channels = []
                 ganim.samplers = []
                 sampler_idx = 0
+                animation_name_occurrences: Dict[str, int] = {}
 
                 for anim_node in (anim.nodes or []):
-                    tgt_node_idx = gltf_node_idx.get(anim_node.name) or \
-                                   gltf_node_idx.get(anim_node.name.lower())
-                    if tgt_node_idx is None:
+                    animation_name_key = str(anim_node.name or "").casefold()
+                    target_indices = gltf_node_indices.get(animation_name_key, [])
+                    occurrence = animation_name_occurrences.get(animation_name_key, 0)
+                    animation_name_occurrences[animation_name_key] = occurrence + 1
+                    if occurrence >= len(target_indices):
                         continue
+                    tgt_node_idx = target_indices[occurrence]
+                    base_nodes = model_nodes_by_name.get(animation_name_key, [])
+                    base_node = base_nodes[occurrence] if occurrence < len(base_nodes) else None
 
                     raw_controllers = anim_node.controllers or []
                     for ctrl in raw_controllers:
@@ -4274,6 +4733,19 @@ class GLTFExporter:
                         values = ctrl.get('values', [])
                         if not times or not values:
                             continue
+
+                        # Odyssey POSITION controllers are rest-local DELTAS.
+                        # glTF animation channels replace the target node's TRS,
+                        # so writing the raw delta snaps every animated node
+                        # toward the model origin.  Materialize the same
+                        # bind + anim_scale * delta contract used by the native
+                        # animation engine and the FBX writer.
+                        if ctype == 8:
+                            values = _gltf_absolute_translation_samples(
+                                getattr(base_node, 'position', (0.0, 0.0, 0.0)),
+                                values,
+                                getattr(model, 'anim_scale', 1.0),
+                            )
 
                         # Map controller type → GLTF path + type string
                         if ctype == 8:    # CTRL_POSITION → translation
@@ -4366,7 +4838,14 @@ class GLTFExporter:
         meshes      = []
         nodes_list  = []
         materials   = []
+        material_pbr_bindings = []
+        pbr_payload_cache = {}
         scene_nodes = []
+
+        from src.core.export.pbr_materials import (
+            build_pbr_material_payload,
+            pbr_material_identity,
+        )
 
         def _add_bv(data: bytes) -> int:
             off = len(buffers_bytes)
@@ -4414,7 +4893,7 @@ class GLTFExporter:
             ua = None
             if len(uvs) == nv:
                 ub = bytearray()
-                for u in uvs: ub += st.pack('<ff', float(u[0]), 1.0 - float(u[1]))
+                for u in uvs: ub += st.pack('<ff', float(u[0]), float(u[1]))
                 ua = _add_acc(bytes(ub), nv, "VEC2", 5126)
 
             ib  = bytearray()
@@ -4429,18 +4908,43 @@ class GLTFExporter:
             tex   = str(getattr(node, 'texture_clean', '') or
                         getattr(node, 'texture', '') or '').strip()
             if tex and tex.upper() not in ('NULL', 'BLACK', ''):
+                pbr_key = pbr_material_identity(node, target="gltf")
+                pbr_payload = pbr_payload_cache.get(pbr_key)
+                if pbr_payload is None:
+                    pbr_payload = build_pbr_material_payload(
+                        node,
+                        tex_cache,
+                        target="gltf",
+                        # Keep parity with the structured backend: preserve
+                        # decoded pixels and authored KOTOR UV rows.
+                        flip_vertical=False,
+                    )
+                    pbr_payload_cache[pbr_key] = pbr_payload
                 diff      = getattr(node, 'diffuse', (1.0, 1.0, 1.0))
-                alpha_val = float(getattr(node, 'alpha', 1.0))
+                alpha_val = float(pbr_payload.alpha["factor"])
                 pbr_dict  = {
                     "baseColorFactor": [float(diff[0]), float(diff[1]),
                                         float(diff[2]), alpha_val],
-                    "metallicFactor": 0.0, "roughnessFactor": 0.8
+                    "metallicFactor": 1.0, "roughnessFactor": 1.0
                 }
-                mat_obj: dict = {"name": tex, "pbrMetallicRoughness": pbr_dict}
-                if alpha_val < 0.999:
-                    mat_obj["alphaMode"] = "BLEND"
+                mat_obj: dict = {
+                    "name": tex,
+                    "pbrMetallicRoughness": pbr_dict,
+                    "alphaMode": str(pbr_payload.alpha["mode"]),
+                    "extras": {
+                        "ghostriggerPbr": {
+                            "schema": "ghostrigger.pbr_material.v1",
+                            "shader": pbr_payload.shader["name"],
+                            "alpha": dict(pbr_payload.alpha),
+                            "conversion": dict(pbr_payload.conversion),
+                        }
+                    },
+                }
+                if mat_obj["alphaMode"] == "MASK":
+                    mat_obj["alphaCutoff"] = float(pbr_payload.alpha["cutoff"] or 0.5)
                 mat_i = len(materials)
                 materials.append(mat_obj)
+                material_pbr_bindings.append((pbr_payload, node, pbr_key))
 
             prim = {"attributes": attrs, "indices": ia}
             if mat_i is not None: prim["material"] = mat_i
@@ -4462,30 +4966,87 @@ class GLTFExporter:
         gltf_images:   List[dict] = []
         gltf_samplers: List[dict] = []
         gltf_textures: List[dict] = []
-        _tex_name_to_idx: Dict[str, int] = {}  # tex_name → gltf_textures index
+        _tex_name_to_idx: Dict[Tuple[tuple, str, int, int], int] = {}
 
-        if tex_cache is not None and materials:
-            for mat in materials:
-                tex_n = mat.get("name", "")
-                if not tex_n or tex_n in _tex_name_to_idx:
-                    if tex_n in _tex_name_to_idx:
-                        # Patch this material too
-                        mat["pbrMetallicRoughness"]["baseColorTexture"] = {
-                            "index": _tex_name_to_idx[tex_n]}
-                    continue
-                uri = self._tex_to_base64_uri(tex_cache, tex_n)
-                if uri is None:
-                    continue
-                img_idx  = len(gltf_images)
-                samp_idx = len(gltf_samplers)
-                tex_idx  = len(gltf_textures)
-                gltf_images.append({"uri": uri, "name": tex_n})
-                gltf_samplers.append({"magFilter": 9729, "minFilter": 9987,
-                                      "wrapS": 10497, "wrapT": 10497})
-                gltf_textures.append({"source": img_idx, "sampler": samp_idx,
-                                      "name": tex_n})
-                _tex_name_to_idx[tex_n] = tex_idx
-                mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex_idx}
+        def _append_pbr_texture(
+            tex_name: str,
+            role: str,
+            suffix: str,
+            payload,
+            pbr_key: tuple,
+            *,
+            wrap_s: int,
+            wrap_t: int,
+        ) -> int | None:
+            key = (pbr_key, role, wrap_s, wrap_t)
+            if key in _tex_name_to_idx:
+                return _tex_name_to_idx[key]
+            uri = payload.data_uri(role)
+            if uri is None:
+                return None
+            image_name = f"{tex_name}_{suffix}"
+            img_idx = len(gltf_images)
+            samp_idx = len(gltf_samplers)
+            tex_idx = len(gltf_textures)
+            gltf_images.append({"uri": uri, "name": image_name})
+            gltf_samplers.append({
+                "magFilter": 9729,
+                "minFilter": 9987,
+                "wrapS": wrap_s,
+                "wrapT": wrap_t,
+            })
+            gltf_textures.append({
+                "source": img_idx,
+                "sampler": samp_idx,
+                "name": image_name,
+            })
+            _tex_name_to_idx[key] = tex_idx
+            return tex_idx
+
+        for mat, (payload, source_node, pbr_key) in zip(materials, material_pbr_bindings):
+            tex_n = str(mat.get("name", "") or "")
+            if not tex_n:
+                continue
+            wrap_s = 33071 if bool(getattr(source_node, 'txi_clamp_s', False)) else 10497
+            wrap_t = 33071 if bool(getattr(source_node, 'txi_clamp_t', False)) else 10497
+            base_color_idx = _append_pbr_texture(
+                tex_n,
+                "base_color",
+                "BaseColor",
+                payload,
+                pbr_key,
+                wrap_s=wrap_s,
+                wrap_t=wrap_t,
+            )
+            normal_idx = _append_pbr_texture(
+                tex_n,
+                "normal",
+                "Normal",
+                payload,
+                pbr_key,
+                wrap_s=wrap_s,
+                wrap_t=wrap_t,
+            )
+            orm_idx = _append_pbr_texture(
+                tex_n,
+                "orm",
+                "ORM",
+                payload,
+                pbr_key,
+                wrap_s=wrap_s,
+                wrap_t=wrap_t,
+            )
+            if base_color_idx is not None:
+                mat["pbrMetallicRoughness"]["baseColorTexture"] = {
+                    "index": base_color_idx,
+                }
+            if orm_idx is not None:
+                mat["pbrMetallicRoughness"]["metallicRoughnessTexture"] = {
+                    "index": orm_idx,
+                }
+                mat["occlusionTexture"] = {"index": orm_idx}
+            if normal_idx is not None:
+                mat["normalTexture"] = {"index": normal_idx}
 
         # ── Build node index for animation channel targeting ──────────────────
         node_name_to_idx: Dict[str, int] = {

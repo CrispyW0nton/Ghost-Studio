@@ -1405,3 +1405,41 @@ transactionally installed the updated dependency set under
 `DAC2E204FC5555A7CE265A241F50738B5D7A4A8237CD6A83A9D9EFBD0CD6138F`).
 Installed loose LIP hashes exactly match the pins above. Visible in-game sync
 remains `candidate_unverified` until Atton and Kreia are retested.
+
+## 2026-08-06 — accepted production Nydak encounter replaces the private clone
+
+The teaser builder now emits the byte-verified production PLCaa encounter
+spine instead of packing the older private `xt_*` candidate. Its source of
+truth is KPM staging session
+`logs/k2-plcaa-xaria-staging/20260806T152132/candidates/Override`. The module
+contains `xar_enc.utc`, `xar_nydak1.utc` through `xar_nydak3.utc`,
+`xar_introtrig.utt`, `xar_director.utp`, `xar_clock.utp`, `xar_cam.dlg`,
+`xaria_blade.uti`, the three `kxar_*` sound templates, and the complete set of
+24 production `kxar_*` NCS files. No `xt_*` resource is packed.
+
+The placement contract is also production-identical: actor tag
+`Xaria_Encounter`; Nydak tags `Xaria_Wraid_1` through `Xaria_Wraid_3`; trigger
+tag `Xaria_Intro_Trigger`; director and timeline tags `Xaria_Director` and
+`Xaria_Timeline`; and sound tags matching their `kxar_*snd` resrefs. The camera
+dialogue uses cameras 111, 112, and 113 with 3/7/8-second pacing, begins through
+`kxar_cam1`, and exits through `kxar_camend`. Cameras 110 through 115 remain in
+the module for compatibility.
+
+Two clean builds were byte-identical. The resulting 69-resource
+`artifacts/xaria_teaser/xartease.mod` is 1,252,606 bytes with SHA-256
+`74549DCD17D7A53C97E85A7DA3C1F6D391A786D079E712DC556281E3B1C3AA59`.
+`structural_proof.json` has SHA-256
+`890318650E0FA90F62F573BC3329DA235139ECE3C25DC9BCAF6314B66B6325CE`;
+`xaria_teaser_manifest.json` has SHA-256
+`1C66E21757F432043CE90C9AC5922C61A167FAB4A121BA80C5D87F2EAE2DA36A`.
+All 31 focused builder tests and all 12 KPM installer tests pass; Python compile
+and Ruff checks also pass.
+
+KPM transactionally installed the candidate while KOTOR II was closed under
+`logs/k2-xaria-teaser-staging/20260806T182944867038/stage-manifest.json`.
+All 381 external dependencies validated, and the live `Modules/xartease.mod`
+hash matches the build. The previous module is preserved in that transaction
+as `Modules/xartease.mod.before` with SHA-256
+`EA6F0E1AB59CFC27811C14003050B02921F19E43EA7302101A9E6C8AAC7088A6`.
+Runtime status remains `candidate_unverified` until the complete Nydak
+cinematic, dialogue handoff, and recruitment are visibly accepted in game.

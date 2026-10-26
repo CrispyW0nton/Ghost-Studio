@@ -9,24 +9,47 @@ if str(LOCAL_SRC) not in sys.path:
 
 from src.core.special.unity_malak_smoke import (
     DEFAULT_ASSET_PATH,
+    DEFAULT_SCENE_PATH,
+    BridgeIdentity,
     choose_preferred_clip,
     metadata_path_for_asset,
+    project_id_for_path,
     run_malak_main_menu_smoke,
 )
 from kotormcp.tools import get_all_tools
 
 
 class _FakeUnityClient:
-    def __init__(self, tmp_path, *, include_animator=True, renderer_type="UnityEngine.SkinnedMeshRenderer"):
-        self.tmp_path = tmp_path
+    """Test double for the authenticated bridge client (identity + request)."""
+
+    def __init__(self, unity_project, *, include_animator=True, renderer_type="UnityEngine.SkinnedMeshRenderer"):
+        self.unity_project = Path(unity_project)
         self.include_animator = include_animator
         self.renderer_type = renderer_type
         self.calls = []
         self.screenshot_index = 0
+        self.identity = BridgeIdentity(
+            self.unity_project, project_id_for_path(self.unity_project), "a" * 32, 6401, "0.2.0", "2022.3.62f1", "",
+        )
+        self.setup = [{"path": DEFAULT_SCENE_PATH, "isLoaded": True, "isActive": True}]
 
-    def request(self, method, params=None):
+    def request(self, method, params=None, **_kwargs):
         self.calls.append((method, params or {}))
+        if method == "health":
+            return {
+                "ok": True, "authenticated": True, "projectId": self.identity.project_id,
+                "editorInstanceId": self.identity.editor_instance_id, "projectPath": str(self.unity_project),
+                "protocolVersion": 1, "durableQueue": {"pendingCount": 0, "processingCount": 0},
+            }
+        if method == "editor.snapshot":
+            return {"ok": True, "sceneSetup": [dict(row) for row in self.setup], "dirtyScenes": []}
+        if method == "editor.get_state":
+            return {"ok": True, "isCompiling": False, "isPlaying": False, "isUpdating": False}
+        if method == "editor.restore_snapshot":
+            self.setup = [dict(row) for row in params["snapshot"]["sceneSetup"]]
+            return {"ok": True}
         if method == "scene.open":
+            self.setup = [{"path": params["path"], "isLoaded": True, "isActive": True}]
             return {"ok": True, "scene": {"path": params["path"], "isLoaded": True}}
         if method == "asset.refresh":
             return {"ok": True, "refreshed": True}
@@ -57,7 +80,7 @@ class _FakeUnityClient:
                 "matches": [{
                     "name": "MalakMenuModel_Animated006J",
                     "instanceId": 2,
-                    "scenePath": "Assets/MCPGhostTests/MainMenuRecreation/MCP_Kotor_MainMenu_Recreation.unity",
+                    "scenePath": DEFAULT_SCENE_PATH,
                 }],
             }
         if method == "component.get":
@@ -78,7 +101,9 @@ class _FakeUnityClient:
         from PIL import Image
 
         self.screenshot_index += 1
-        path = self.tmp_path / f"shot-{self.screenshot_index}.png"
+        folder = self.unity_project / "Library" / "UnityMcpGhost" / "screenshots"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"shot-{self.screenshot_index}.png"
         color = (0, 0, 0) if self.screenshot_index == 1 else (64, 0, 0)
         Image.new("RGB", (4, 4), color).save(path)
         return str(path)
@@ -114,7 +139,7 @@ def test_metadata_path_for_asset_uses_ghostrigger_sidecar_name():
 def test_run_malak_main_menu_smoke_writes_report(tmp_path):
     unity_project = tmp_path / "UnityProject"
     _write_sidecar(unity_project)
-    client = _FakeUnityClient(tmp_path)
+    client = _FakeUnityClient(unity_project)
     output = tmp_path / "report.json"
 
     report = run_malak_main_menu_smoke(
@@ -130,8 +155,11 @@ def test_run_malak_main_menu_smoke_writes_report(tmp_path):
     assert report["unity_summary"]["malak_instance_count"] == 1
     assert report["unity_summary"]["component_types"]["UnityEngine.Animator"] == 1
     assert report["screenshot_delta"]["visible_delta"] is True
+    assert report["restore"] == {"attempted": True, "ok": True, "verified": True}
     assert output.exists()
-    assert [call[0] for call in client.calls][:3] == ["scene.open", "asset.refresh", "asset.find"]
+    methods = [call[0] for call in client.calls]
+    assert methods[:6] == ["health", "editor.snapshot", "editor.get_state", "scene.open", "asset.refresh", "editor.get_state"]
+    assert methods[-2:] == ["editor.restore_snapshot", "editor.snapshot"]
 
 
 def test_run_malak_main_menu_smoke_reports_missing_animator(tmp_path):
@@ -140,7 +168,7 @@ def test_run_malak_main_menu_smoke_reports_missing_animator(tmp_path):
 
     report = run_malak_main_menu_smoke(
         unity_project=unity_project,
-        client=_FakeUnityClient(tmp_path, include_animator=False),
+        client=_FakeUnityClient(unity_project, include_animator=False),
         screenshot_delay=0.0,
     )
 

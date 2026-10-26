@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
+import struct
 from pathlib import Path
 
 import pytest
 
+from src.adapters.rendering import moderngl_resources
 from src.core.animation.animation_engine import (
     AnimationEngine,
     SuperModelResolver,
@@ -27,8 +30,7 @@ from src.core.geometry.lightsaber import (
     should_use_procedural_lightsaber_blade_texture,
     synthetic_lightsaber_blade_uvs,
 )
-from src.core.geometry.model_data import Animation, KotorModel, ModelNode
-from src.gui.rendering.gpu_renderer import _build_vbo_data
+from src.core.geometry.model_data import Animation, GameVersion, KotorModel, ModelNode, NodeFlags
 from src.core.retargeting.aurora_animation_writer import (
     AuroraAnimationInjectionRequest,
     AuroraAnimationWriter,
@@ -37,6 +39,7 @@ from src.core.validation.animation_block_validator import (
     AnimationBlockValidationError,
     validate_animation_block_against_model,
 )
+from src.gui.rendering.gpu_renderer import _build_vbo_data
 from src.gui.rendering.mesh_render_data import _node_uv_array
 
 
@@ -166,6 +169,124 @@ def test_position_controller_is_rest_local_delta() -> None:
     pose = evaluate_aurora_animation_pose(model, animation, 0.0)
 
     assert pose.local_transforms_by_node["child"].position == pytest.approx((3.0, 0.0, 0.0))
+
+
+def test_c_kath_root_position_controller_is_absolute_local() -> None:
+    root = ModelNode(name="c_kath")
+    kath_root = ModelNode(
+        name="c_kathroot",
+        position=(0.00186379, -0.37697601, 0.81954002),
+        parent=root,
+    )
+    root.children.append(kath_root)
+    authored_position = [0.14225900, -0.44386700, 0.81820202]
+    animation = Animation(
+        name="cdodgeg",
+        length=1.5,
+        nodes=[
+            _animation_node(
+                "c_kathroot",
+                position_values=[authored_position, list(kath_root.position)],
+                times=[0.0, 1.5],
+            )
+        ],
+    )
+    model = KotorModel(name="c_kath", root_node=root, animations=[animation])
+
+    oracle_pose = evaluate_aurora_animation_pose(model, animation, 0.0)
+    engine = AnimationEngine(model)
+    assert engine.play("cdodgeg", loop=False, blend=False)
+    viewport_pose = engine.evaluate(0.0)
+
+    assert oracle_pose.local_transforms_by_node["c_kathroot"].position == pytest.approx(
+        authored_position
+    )
+    # Ghost Studio strips the clip's first-frame root baseline so starting an
+    # animation does not move the scene actor.  The format-level oracle still
+    # exposes the authored absolute-local row above.
+    assert viewport_pose.nodes["c_kathroot"].position == pytest.approx(kath_root.position)
+
+    locomotion_position = [0.00186378, -0.11574100, 0.83328003]
+    replacement_animation = Animation(
+        name="cwalk",
+        length=1.5,
+        nodes=[
+            _animation_node(
+                "c_kathroot",
+                position_values=[
+                    locomotion_position,
+                    [locomotion_position[0], locomotion_position[1], locomotion_position[2] + 0.1],
+                ],
+                times=[0.0, 1.5],
+            )
+        ],
+    )
+    replacement_model = KotorModel(
+        name="c_kath",
+        root_node=root,
+        animations=[replacement_animation],
+    )
+    replacement_pose = evaluate_aurora_animation_pose(
+        replacement_model,
+        replacement_animation,
+        0.0,
+    )
+    assert replacement_pose.local_transforms_by_node["c_kathroot"].position == pytest.approx(
+        locomotion_position
+    )
+
+    replacement_engine = AnimationEngine(replacement_model)
+    assert replacement_engine.play("cwalk", loop=False, blend=False)
+    replacement_viewport_pose = replacement_engine.evaluate(0.0)
+    assert replacement_viewport_pose.nodes["c_kathroot"].position == pytest.approx(
+        kath_root.position
+    )
+    replacement_engine.seek(1.5)
+    replacement_motion_pose = replacement_engine.evaluate(1.5)
+    assert replacement_motion_pose.nodes["c_kathroot"].position == pytest.approx(
+        (kath_root.position[0], kath_root.position[1], kath_root.position[2] + 0.1)
+    )
+
+    scene_root = ModelNode(name="Untitled Scene")
+    wrapped_kath = ModelNode(name="c_kath", parent=scene_root)
+    wrapped_kath_root = ModelNode(
+        name="c_kathroot",
+        position=kath_root.position,
+        parent=wrapped_kath,
+    )
+    scene_root.children = [wrapped_kath]
+    wrapped_kath.children = [wrapped_kath_root]
+    wrapped_model = KotorModel(
+        name="Untitled Scene",
+        root_node=scene_root,
+        animations=[replacement_animation],
+    )
+    wrapped_engine = AnimationEngine(wrapped_model)
+    assert wrapped_engine.play("cwalk", loop=False, blend=False)
+    wrapped_pose = wrapped_engine.evaluate(0.0)
+    assert wrapped_pose.nodes["c_kathroot"].position == pytest.approx(kath_root.position)
+
+    k2_animation = Animation(
+        name="cdodgeg",
+        length=1.5,
+        nodes=[
+            _animation_node(
+                "c_kathroot",
+                position_values=[authored_position, list(kath_root.position)],
+                times=[0.0, 1.5],
+            )
+        ],
+    )
+    k2_model = KotorModel(
+        name="c_kath",
+        game_version=GameVersion.K2,
+        root_node=root,
+        animations=[k2_animation],
+    )
+    k2_control_pose = evaluate_aurora_animation_pose(k2_model, k2_animation, 0.0)
+    assert k2_control_pose.local_transforms_by_node["c_kathroot"].position == pytest.approx(
+        tuple(kath_root.position[index] + authored_position[index] for index in range(3))
+    )
 
 
 def _sample_position_controller(
@@ -596,6 +717,55 @@ def test_gpu_vbo_builder_applies_zero_scale_to_local_blade_vertices() -> None:
     assert vdata is not None
     for row in vdata[:, 0:3].tolist():
         assert row == pytest.approx([1.0, 2.0, 3.0])
+
+
+def test_gpu_vbo_builder_suppresses_redundant_c_kath_hair_shell_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = ModelNode(name="c_kath")
+    hair = ModelNode(
+        name="Hair01",
+        flags=int(NodeFlags.HEADER | NodeFlags.MESH | NodeFlags.SKIN),
+        parent=root,
+        texture="c_khounda02",
+        vertices=[(0.0, 0.0, 0.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)],
+        normals=[(0.0, 0.0, 1.0)] * 3,
+        uvs=[(0.0, 0.0), (0.0, 1.0), (1.0, 0.0)],
+        faces=[(0, 1, 2)],
+    )
+    root.children.append(hair)
+    uv_digest = hashlib.sha256(
+        b"".join(struct.pack("<2f", *uv) for uv in hair.uvs)
+    ).hexdigest()
+    monkeypatch.setattr(moderngl_resources, "_RETAIL_C_KATH_HAIR_VERTEX_COUNT", 3)
+    monkeypatch.setattr(moderngl_resources, "_RETAIL_C_KATH_HAIR_FACE_COUNT", 1)
+    monkeypatch.setattr(moderngl_resources, "_RETAIL_C_KATH_HAIR_UV_SHA256", uv_digest)
+
+    vdata, indices = _build_vbo_data(
+        hair,
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+
+    assert vdata is None
+    assert indices is None
+
+    root.name = "c_khounda"
+    control_vdata, _control_indices = _build_vbo_data(
+        hair,
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    assert control_vdata is not None
+
+    root.name = "c_kath"
+    hair.uvs[0] = (0.25, 0.25)
+    replacement_vdata, _replacement_indices = _build_vbo_data(
+        hair,
+        (0.0, 0.0, 0.0),
+        (0.0, 0.0, 0.0, 1.0),
+    )
+    assert replacement_vdata is not None
 
 
 def test_gpu_renderer_draws_lightsaber_blade_planes_with_culling_enabled() -> None:

@@ -95,6 +95,7 @@ from src.core.rendering.mesh_render_data import (
     _animated_node_world_transform,
     _bas_attachment_world_transform,
     _effective_animation_pose_for_node,
+    _node_has_renderable_rigid_surface,
     _node_is_embedded_walkmesh,
     _pose_node_for_transform,
     animation_pose_applies_to_node,
@@ -1065,7 +1066,7 @@ class GpuRenderer:
         except Exception:
             pass
         try:
-            ctx.front_face = 'cw'
+            ctx.front_face = 'ccw'
         except Exception:
             pass
         try:
@@ -1349,8 +1350,16 @@ class GpuRenderer:
                 world_pos = getattr(node, "position", (0.0, 0.0, 0.0))
                 world_orient = getattr(node, "rotation", (0.0, 0.0, 0.0, 1.0))
             color = getattr(node, "light_color", (1.0, 1.0, 1.0)) or (1.0, 1.0, 1.0)
+            color_rgb = tuple(max(0.0, float(x)) for x in color[:3])
             radius = max(0.001, float(getattr(node, "light_radius", 5.0) or 5.0))
-            intensity = max(0.0, float(getattr(node, "light_multiplier", 1.0) or 1.0))
+            raw_intensity = getattr(node, "light_multiplier", 1.0)
+            intensity = max(0.0, float(1.0 if raw_intensity is None else raw_intensity))
+            # Some creature models carry a disabled Aurora light whose authored
+            # color is black (for example K2's T3-M4 and war droid).  Uploading
+            # that zero-energy record switches the whole viewport from studio
+            # lighting to scene lighting without contributing any illumination.
+            if intensity <= 1.0e-6 or max(color_rgb, default=0.0) <= 1.0e-6:
+                continue
             cone_deg = max(1.0, min(179.0, float(getattr(node, "light_cone_degrees", 45.0) or 45.0)))
             light_kind = str(getattr(node, "light_kind", "point") or "point").strip().lower()
             record = {
@@ -1359,7 +1368,7 @@ class GpuRenderer:
                 "ambient_only": 1 if bool(getattr(node, "light_ambient_only", False)) else 0,
                 "pos": tuple(float(x) for x in world_pos[:3]),
                 "dir": self._rotate_vec_by_quat((0.0, 0.0, -1.0), world_orient),
-                "color": tuple(max(0.0, float(x)) for x in color[:3]),
+                "color": color_rgb,
                 "radius": radius,
                 "intensity": intensity,
                 "cone_cos": math.cos(math.radians(cone_deg * 0.5)),
@@ -1761,12 +1770,11 @@ class GpuRenderer:
             ctx.depth_func = '<='
             _set_depth_write(ctx, True)  # depth writes ON by default
 
-            # BUG-WIND FIX: KotOR models use CLOCKWISE triangle winding (Direct3D
-            # convention).  OpenGL defaults to COUNTER-CLOCKWISE front faces.
-            # Setting front_face='cw' makes OpenGL treat CW tris as front-facing,
-            # which means back-face culling discards the correct (back) faces.
-            # Reference: KotorBlender reader.py winding notes + KotOR.js geometry.
-            ctx.front_face = 'cw'
+            # The uploaded static mesh indices are CCW relative to their normals
+            # (verified with retail K2 001ebo1 and native Unreal import readback).
+            # This right-handed view/projection path preserves that front side.
+            # CW here hides room exteriors and exposes the backs of closed props.
+            ctx.front_face = 'ccw'
             if self.show_wireframe or not self.cull_faces:
                 ctx.disable(moderngl.CULL_FACE)
             else:
@@ -2243,7 +2251,8 @@ class GpuRenderer:
             # that must NOT be rendered as geometry.  Detection rules (same logic as
             # viewport._is_deformation_helper, inlined here for GPU-path independence):
             #   1. Non-skin nodes with no UVs → helper (UNLESS module/area model)
-            #   2. Non-skin nodes whose names end with '_g', '_g0', or '_dum' → helper
+            #   2. Non-skin '_g'/'_g0'/'_dum' nodes without an explicitly
+            #      renderable rigid surface → helper
             #   3. Nodes with null/empty texture AND no UVs → helper
             #   4. Skin nodes with a real texture and UVs → ALWAYS render
             # Reference: viewport._is_deformation_helper, PyKotor geometry_utils.py,
@@ -2292,6 +2301,12 @@ class GpuRenderer:
                 if is_skin and has_tex and has_uvs:
                     return False
 
+                # Several KOTOR 2 droids author their visible articulated body
+                # as rigid _g meshes.  A true render flag plus diffuse texture
+                # and UVs is stronger evidence than the helper-style suffix.
+                if _node_has_renderable_rigid_surface(nd):
+                    return False
+
                 # Skin nodes with null texture and no UVs are helpers
                 if is_skin and not has_tex and not has_uvs:
                     return True
@@ -2303,7 +2318,8 @@ class GpuRenderer:
                         return False  # module geometry: render flat-shaded without UVs
                     return True
 
-                # Name-based helper detection for non-skin nodes
+                # Name-based helper detection is only a fallback after the
+                # explicit visible-surface evidence above.
                 if not is_skin:
                     if (node_name.endswith('_g') or node_name.endswith('_g0')
                             or node_name.endswith('_dum')):

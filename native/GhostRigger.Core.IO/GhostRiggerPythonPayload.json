@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.IO",
-    "file_count": 48,
+    "file_count": 59,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -33,7 +33,7 @@
             "resource_name": "PYTHON_PAYLOAD_CONVERTERS_MESH_CONVERTER",
             "source_path": "src/converters/mesh_converter.py",
             "packaged_path": "Python/src/converters/mesh_converter.py",
-            "sha256": "0608d40b4695f767d316e19b2438eaeca150dd031ffc17ad1209f930e2fc9530"
+            "sha256": "5d35e5a68d6cf78de1b54dfd096d6bf0a7f0201b964c7c6432a7897c91b20b9c"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CONVERTERS_NORMAL_MAP",
@@ -51,7 +51,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_EXPORT_JOB",
             "source_path": "src/core/export/export_job.py",
             "packaged_path": "Python/src/core/export/export_job.py",
-            "sha256": "44354f2e376d07d93a06dc01ca16fbcb8d5015301655bb0552d6103cf5997cda"
+            "sha256": "4a87207418b8aa8559c8d809741dd6720d018bf592b3ed24c2822643ac068476"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_GLTF_IMPORTER",
@@ -63,13 +63,19 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_KOTOR_FBX_MANIFEST",
             "source_path": "src/core/export/kotor_fbx_manifest.py",
             "packaged_path": "Python/src/core/export/kotor_fbx_manifest.py",
-            "sha256": "4d2f7fdfb1405054dffda34f70307510389d277548fc86869a38ba68b8eb892d"
+            "sha256": "2b37aba67006998a182787532774865cf3bf58e97a8a8b97d0ff5dc596a026e2"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_PBR_MATERIALS",
+            "source_path": "src/core/export/pbr_materials.py",
+            "packaged_path": "Python/src/core/export/pbr_materials.py",
+            "sha256": "7be352ac9dad2a52f1da2292e5916a9be3a8e58dd8271a28588f181988bf51d3"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_UNITY_EXPORT_BRIDGE",
             "source_path": "src/core/export/unity_export_bridge.py",
             "packaged_path": "Python/src/core/export/unity_export_bridge.py",
-            "sha256": "f12088a7478fabb5377bd48af4f25d6458ec30de53435d26b455d90fc74f06f0"
+            "sha256": "17eb9f4c492274c803897f057416c1eed87648e3c5d9769035c16f7a53c66927"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_EXPORT_UNITY_IMPORT_VALIDATOR",
@@ -111,7 +117,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MDL_MDL_WRITER",
             "source_path": "src/core/mdl/mdl_writer.py",
             "packaged_path": "Python/src/core/mdl/mdl_writer.py",
-            "sha256": "534a0f36ab35d564b7e3b3df44d3402076c6183ac7ddc7262dc942973c2ffcf7"
+            "sha256": "a48468d884b6aaacb12d6517bf7e55e7ffdc4c4b3ac7055606b4c00370a9f88e"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_PLACEABLES_INIT",
@@ -124,6 +130,18 @@
             "source_path": "src/core/placeables/placeable_utp_io.py",
             "packaged_path": "Python/src/core/placeables/placeable_utp_io.py",
             "sha256": "2545c8e78326eb9059c8204691ee13904d989be9ac2369b33ecd5021051fff11"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SECONDARY_MOTION_INIT",
+            "source_path": "src/core/secondary_motion/__init__.py",
+            "packaged_path": "Python/src/core/secondary_motion/__init__.py",
+            "sha256": "a465b30005c700b51fd4a2df62033f1ae69172becd4cc3904f99cd405bc6bfd1"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SECONDARY_MOTION_PROFILE_IO",
+            "source_path": "src/core/secondary_motion/profile_io.py",
+            "packaged_path": "Python/src/core/secondary_motion/profile_io.py",
+            "sha256": "f64349ae04e428299fc35edcb138dd69c4b39123a81ea64b9152680484e81454"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_TEMPLATES_INIT",
@@ -183,7 +201,7 @@
             "resource_name": "PYTHON_PAYLOAD_IO_CLEAN_MODULE_OBJ_EXPORT",
             "source_path": "src/io/clean_module_obj_export.py",
             "packaged_path": "Python/src/io/clean_module_obj_export.py",
-            "sha256": "0cb5b873360379380029b780f20ad1d8ad8cf56506b57d7b6f73c830fd398e35"
+            "sha256": "49b0688f8390802389925f804c3f834eeee792f9f89b6959730b9985e5ffb04b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_EXPORT_CONTROL",
@@ -207,7 +225,7 @@
             "resource_name": "PYTHON_PAYLOAD_IO_FBX_FBX_EXPORTER",
             "source_path": "src/io/fbx/fbx_exporter.py",
             "packaged_path": "Python/src/io/fbx/fbx_exporter.py",
-            "sha256": "6eb8bfdaa90ec4db2ba478e93f661848b6379de80f202c9d796f13585f8a1a34"
+            "sha256": "59f3e74169350e0c4eee40745f9c1c11930218e48f931ebc7419c0c2fdb3bffd"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_FBX_FBX_IMPORTER",
@@ -240,6 +258,12 @@
             "sha256": "1b4a6ea2c515cfdf0cef629bf43c09d64bf7839a85c2d7a181cd5332c249ac7b"
         },
         {
+            "resource_name": "PYTHON_PAYLOAD_IO_FULL_MODULE_OBJ_EXPORT",
+            "source_path": "src/io/full_module_obj_export.py",
+            "packaged_path": "Python/src/io/full_module_obj_export.py",
+            "sha256": "2f24bf4ae14afa1fa82e2ecf5bdc8e9d0e53b960caeabe10d9546904dd5e1865"
+        },
+        {
             "resource_name": "PYTHON_PAYLOAD_IO_HEAD_ART_IMPORTER",
             "source_path": "src/io/head_art_importer.py",
             "packaged_path": "Python/src/io/head_art_importer.py",
@@ -249,7 +273,7 @@
             "resource_name": "PYTHON_PAYLOAD_IO_HEAD_BINARY_EXPORT",
             "source_path": "src/io/head_binary_export.py",
             "packaged_path": "Python/src/io/head_binary_export.py",
-            "sha256": "02bdbe43c1584ca745c4b51a040d775164e4b365e30483bec19e199a5f5f672a"
+            "sha256": "dbf81cba22e98def46645dd906c0cab9574f019b5d7516e903eaf66281985b92"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_HEAD_BUILDER_PACKAGE",
@@ -261,7 +285,7 @@
             "resource_name": "PYTHON_PAYLOAD_IO_HEAD_GAME_RECORDS",
             "source_path": "src/io/head_game_records.py",
             "packaged_path": "Python/src/io/head_game_records.py",
-            "sha256": "a2516f79e0b126bcba1bde3d50d05e1cec502484a4d3a590b5586b1f12df47c5"
+            "sha256": "1d0390db94fbe89a0d5f7c8c0ad273346357b4f5778b1b06b31f42c8e0eaf530"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_HEAD_TEXTURE_ASSET",
@@ -274,6 +298,12 @@
             "source_path": "src/io/kotor_gui_io.py",
             "packaged_path": "Python/src/io/kotor_gui_io.py",
             "sha256": "0144c898ea0a2ead0a48e21e97be6d829639b6f0ca9d4cf19b366ae8351f29cf"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_LEVEL_SCENE_EXPORT",
+            "source_path": "src/io/level_scene_export.py",
+            "packaged_path": "Python/src/io/level_scene_export.py",
+            "sha256": "eee499866ef40d513bd91b3f4e0c678ff2f8906df8681df4e572d4ee026ff39a"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_MDL_AUTO_IMPORT",
@@ -292,6 +322,42 @@
             "source_path": "src/io/skybox_panorama_conversion.py",
             "packaged_path": "Python/src/io/skybox_panorama_conversion.py",
             "sha256": "a012b8abddf9f8236d2bc3d482be255146d7418618900ed15fff1a929ac6bce4"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_UNREAL_EDITOR_CONNECTION",
+            "source_path": "src/io/unreal_editor_connection.py",
+            "packaged_path": "Python/src/io/unreal_editor_connection.py",
+            "sha256": "363261f82f5cabce70d186b6d9bf68b145111ed304caef2849d253bf10295f39"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_UNREAL_KMAP_STORAGE",
+            "source_path": "src/io/unreal_kmap_storage.py",
+            "packaged_path": "Python/src/io/unreal_kmap_storage.py",
+            "sha256": "2cfa1fe45cdd468b8e41a09f71cb19764bae40ff209e7b1f2d2e7cea4751f029"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_UNREAL_LEVEL_BUNDLE",
+            "source_path": "src/io/unreal_level_bundle.py",
+            "packaged_path": "Python/src/io/unreal_level_bundle.py",
+            "sha256": "3fa85a0b812fe5e2a5ca3d436a37084770d3dca85e333018654c275a2a54ed89"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_UNREAL_NATIVE_SNAPSHOT",
+            "source_path": "src/io/unreal_native_snapshot.py",
+            "packaged_path": "Python/src/io/unreal_native_snapshot.py",
+            "sha256": "d3bc7c6722f1c914c8372bfe0776c5f86ff62ee9a6eb88dcbc21dad0dfb3edd3"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_UNREAL_PIPELINE_STORE",
+            "source_path": "src/io/unreal_pipeline_store.py",
+            "packaged_path": "Python/src/io/unreal_pipeline_store.py",
+            "sha256": "7811cfa3826ad9658d25dbb73156f24fb30fd2898d21c7855569093da488b2c6"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_IO_UNREAL_PROJECT_ASSETS",
+            "source_path": "src/io/unreal_project_assets.py",
+            "packaged_path": "Python/src/io/unreal_project_assets.py",
+            "sha256": "6c925391c5b95b44b9df588c2d79e2830c6a50f96ad0bc09e833bd37c00af747"
         }
     ]
 }

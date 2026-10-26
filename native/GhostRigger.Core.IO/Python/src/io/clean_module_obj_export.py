@@ -75,19 +75,12 @@ def _is_oversized_flat_background(
     return max(z_values) - min(z_values) <= 1e-4
 
 
-def prepare_clean_module_obj_model(
+def validate_module_scene_objects(
     scene_objects: Any,
     *,
-    name: str = "module_clean",
-    background_face_area: float = DEFAULT_BACKGROUND_FACE_AREA,
     is_cancelled=None,
-) -> tuple[KotorModel, CleanModuleObjSummary]:
-    """Merge a loaded module and remove skybox/backdrop-only faces.
-
-    The merged source expands vertices per polygon corner.  Compaction is still
-    performed explicitly so excluded faces leave no orphaned skybox vertices in
-    the OBJ file.
-    """
+) -> list[Any]:
+    """Materialize loaded module rooms and require a runtime model for each."""
 
     objects = list(scene_objects or [])
     validated_objects: list[Any] = []
@@ -111,6 +104,27 @@ def prepare_clean_module_obj_model(
         )
 
     check_export_cancelled(is_cancelled)
+    return validated_objects
+
+
+def prepare_clean_module_obj_model(
+    scene_objects: Any,
+    *,
+    name: str = "module_clean",
+    background_face_area: float = DEFAULT_BACKGROUND_FACE_AREA,
+    is_cancelled=None,
+) -> tuple[KotorModel, CleanModuleObjSummary]:
+    """Merge a loaded module and remove skybox/backdrop-only faces.
+
+    The merged source expands vertices per polygon corner.  Compaction is still
+    performed explicitly so excluded faces leave no orphaned skybox vertices in
+    the OBJ file.
+    """
+
+    validated_objects = validate_module_scene_objects(
+        scene_objects,
+        is_cancelled=is_cancelled,
+    )
     merged = merge_selected_scene_objects(
         validated_objects,
         name=name,
@@ -211,4 +225,5 @@ __all__ = [
     "CleanModuleObjSummary",
     "DEFAULT_BACKGROUND_FACE_AREA",
     "prepare_clean_module_obj_model",
+    "validate_module_scene_objects",
 ]

@@ -688,20 +688,23 @@ def validate_head_donor_snapshot(
                 node=skin.node_name,
                 unnormalized_rows=skin.unnormalized_rows,
             )
-        palette_names = {name.casefold() for name in skin.bone_palette if name}
-        if "head_g" not in palette_names:
-            issue(
-                "head.donor.head_influence",
-                "The donor skin palette has no head_g fallback influence.",
-                node=skin.node_name,
-            )
-        if snapshot.attachment_target_name.casefold() not in palette_names:
-            issue(
-                "head.donor.attachment_influence",
-                "The donor skin palette does not target its attachment node.",
-                node=skin.node_name,
-                target=snapshot.attachment_target_name,
-            )
+        if skin in primary_skins:
+            palette_names = {
+                name.casefold() for name in skin.bone_palette if name
+            }
+            if "head_g" not in palette_names:
+                issue(
+                    "head.donor.head_influence",
+                    "The donor skin palette has no head_g fallback influence.",
+                    node=skin.node_name,
+                )
+            if snapshot.attachment_target_name.casefold() not in palette_names:
+                issue(
+                    "head.donor.attachment_influence",
+                    "The donor skin palette does not target its attachment node.",
+                    node=skin.node_name,
+                    target=snapshot.attachment_target_name,
+                )
 
     return HeadDonorEligibilityReport(tuple(issues))
 
@@ -711,14 +714,16 @@ def compare_head_donor_contract(
     model: Any,
     *,
     output_resref: str = "",
+    allowed_local_animation_names: Iterable[str] = (),
 ) -> HeadDonorContractDiff:
     """Compare an edited or reloaded model to its immutable donor contract.
 
     Geometry, UV, material, and per-vertex skin rows may change on the primary
     head skin and on any existing render nodes explicitly certified by the
     saved component recipe.  DAG, native identities, palette/bind arrays, raw
-    bounds, inherited declaration, attachment link, supermodel, and local
-    animation inventory may not.
+    bounds, inherited declaration, attachment link, and supermodel may not.
+    Local animation additions require an explicit allow-list; removals and
+    unlisted additions remain structural failures.
     """
 
     current = capture_head_donor_snapshot(
@@ -818,7 +823,6 @@ def compare_head_donor_contract(
         "detected_character_mode",
         "attachment_target_name",
         "supermodel",
-        "local_animation_names",
         "inherited_node_declaration",
         "local_node_count",
         "retail_bb_min",
@@ -835,6 +839,40 @@ def compare_head_donor_contract(
                 actual,
                 f"Donor structural field changed: {name}.",
             )
+
+    allowed_animation_names = tuple(
+        str(value or "").strip()
+        for value in allowed_local_animation_names
+        if str(value or "").strip()
+    )
+    expected_animation_names = list(snapshot.local_animation_names)
+    expected_animation_keys = {
+        value.casefold() for value in expected_animation_names
+    }
+    for value in allowed_animation_names:
+        if value.casefold() not in expected_animation_keys:
+            expected_animation_names.append(value)
+            expected_animation_keys.add(value.casefold())
+    actual_animation_names = list(current.local_animation_names)
+    if [value.casefold() for value in actual_animation_names] != [
+        value.casefold() for value in expected_animation_names
+    ]:
+        blocked(
+            "local_animation_names",
+            tuple(expected_animation_names),
+            tuple(actual_animation_names),
+            "Local animation inventory contains a removal or unlisted addition.",
+        )
+    elif tuple(actual_animation_names) != snapshot.local_animation_names:
+        allowed.append(
+            HeadDonorDifference(
+                path="local_animation_names",
+                category="animation_payload",
+                expected=snapshot.local_animation_names,
+                actual=tuple(actual_animation_names),
+                message="Explicitly allowed local animation override was added.",
+            )
+        )
 
     for name in ("model_name", "geometry_root_name"):
         expected = getattr(snapshot, name)

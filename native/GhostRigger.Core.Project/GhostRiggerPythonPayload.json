@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Project",
-    "file_count": 7,
+    "file_count": 8,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -15,7 +15,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_PROJECT_CUSTOM_RIGGED_CHARACTER_PROJECT",
             "source_path": "src/core/project/custom_rigged_character_project.py",
             "packaged_path": "Python/src/core/project/custom_rigged_character_project.py",
-            "sha256": "ab71b4e2ba32459430ba6583e14fb89a54f5aab4f3930ea688522a3cf79a45d4"
+            "sha256": "846cd7ba90d0010c41d686d4ca2671ee6d4a5e39cca0d62854735a5a8485d678"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_PROJECT_GHOSTRIGGER_PROJECT",
@@ -33,7 +33,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_PROJECT_PLACEABLE_ASSET",
             "source_path": "src/core/project/placeable_asset.py",
             "packaged_path": "Python/src/core/project/placeable_asset.py",
-            "sha256": "da3d3772cb52cbd4ab66ed80321f249570abb6e1fb4995585b626b9bbd97ce76"
+            "sha256": "19b025a2c7b03ee1ad3cc31071c051cd3431a7db9b9d44281b30625df27e2fbb"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_PROJECT_PROJECT_VALIDATION",
@@ -46,6 +46,12 @@
             "source_path": "src/core/project/resource_address.py",
             "packaged_path": "Python/src/core/project/resource_address.py",
             "sha256": "3da3b21fb0e0717f7cea870e78a0f89a3928953c82b694ff5458de6b5bb87455"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_PROJECT_SECONDARY_MOTION_PROFILE",
+            "source_path": "src/core/project/secondary_motion_profile.py",
+            "packaged_path": "Python/src/core/project/secondary_motion_profile.py",
+            "sha256": "09772941d5d88c8cbff5522407bc2e27888ed32b90044375e6cea193a57c9e87"
         }
     ]
 }

@@ -395,6 +395,7 @@ _SERVICE_ALIASES: frozenset[str] = frozenset(
         "writeLIP",
         "writePTH",
         "writeOverride",
+        "ghoststudio_restore_override",
         *_BLUEPRINT_COMPOSITE_TYPES,
     }
 )
@@ -929,11 +930,68 @@ def _service_tool_definitions() -> list[dict[str, Any]]:
                     "restype": {"type": "string"},
                     "data_b64": {"type": "string"},
                     **install_guard,
+                    "backup_root": {
+                        "type": "string",
+                        "description": (
+                            "Optional existing absolute folder outside game_root for the install transaction, "
+                            "conflict backups and install receipt (default: game_root/GhostStudioBackups)."
+                        ),
+                    },
+                    "expect_existing": {
+                        "type": "string",
+                        "description": (
+                            "Optional compare-and-swap guard from a preview: 'absent' or the SHA-256 the "
+                            "current Override file must have; any other state refuses the install."
+                        ),
+                    },
                 },
                 "required": [
                     "game", "resref", "restype", "data_b64",
                     "workspace_root", "game_root", "confirm_install",
                 ],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "ghoststudio_restore_override",
+            "description": (
+                "Undo one writeOverride install: only when the Override file still has the installed SHA-256, "
+                "save its bytes under backup_root (outside the game root), then write the prior bytes back "
+                "or remove a file the install created. Requires confirm_restore=true."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "game": game,
+                    "resref": {"type": "string"},
+                    "restype": {"type": "string"},
+                    "game_root": install_guard["game_root"],
+                    "backup_root": {
+                        "type": "string",
+                        "description": "Existing absolute folder outside game_root for the pre-restore backup and receipt.",
+                    },
+                    "expect_current": {
+                        "type": "string",
+                        "description": "SHA-256 the current Override file must have (the installed bytes).",
+                    },
+                    "prior_data_b64": {
+                        "type": "string",
+                        "description": "Prior bytes to write back (base64); exactly one of this or remove_file.",
+                    },
+                    "remove_file": {
+                        "type": "boolean",
+                        "description": "true when the install created the file: remove it instead of writing prior bytes.",
+                    },
+                    "confirm_restore": {
+                        "type": "boolean",
+                        "description": "Must be literal true before GhostStudio may change a game installation.",
+                    },
+                },
+                "required": [
+                    "game", "resref", "restype", "game_root", "backup_root",
+                    "expect_current", "confirm_restore",
+                ],
+                "additionalProperties": False,
             },
         },
     ]
@@ -3755,7 +3813,40 @@ def _validated_existing_root(value: object, *, label: str) -> Path:
     return root
 
 
-def _install_override_resource(arguments: Mapping[str, Any], *, resource: object) -> dict[str, Any]:
+def _separate_trees(first: Path, second: Path) -> bool:
+    return not (first == second or first in second.parents or second in first.parents)
+
+
+def _validated_game_root(arguments: Mapping[str, Any], game: str) -> Path:
+    game_root = _validated_existing_root(arguments.get("game_root"), label="game_root")
+    executable = game_root / ("swkotor.exe" if game == "K1" else "swkotor2.exe")
+    chitin = game_root / "chitin.key"
+    if not executable.is_file() or executable.is_symlink() or not chitin.is_file() or chitin.is_symlink():
+        raise ValueError(f"game_root does not contain the expected safe {game} executable and chitin.key")
+    return game_root
+
+
+def _validated_backup_root(value: object, game_root: Path) -> Path:
+    backup_root = _validated_existing_root(value, label="backup_root")
+    if not _separate_trees(backup_root, game_root):
+        raise ValueError("backup_root and game_root must be separate directory trees")
+    return backup_root
+
+
+def _expected_state(value: object, label: str) -> str:
+    text = str(value or "").strip().lower()
+    if text != "absent" and not re.fullmatch(r"[0-9a-f]{64}", text):
+        raise ValueError(f"{label} must be 'absent' or a SHA-256 hex digest")
+    return text
+
+
+def _install_override_resource(
+    arguments: Mapping[str, Any],
+    *,
+    resource: object,
+    backup_root: object = None,
+    expect_existing: object = None,
+) -> dict[str, Any]:
     from src.core.scripting.packaging import NarrativePackagingService
 
     if arguments.get("confirm_install") is not True:
@@ -3763,12 +3854,11 @@ def _install_override_resource(arguments: Mapping[str, Any], *, resource: object
     game = _compat_game(arguments.get("game", "K1"))
     workspace_root = _validated_existing_root(arguments.get("workspace_root"), label="workspace_root")
     game_root = _validated_existing_root(arguments.get("game_root"), label="game_root")
-    if workspace_root == game_root or workspace_root in game_root.parents or game_root in workspace_root.parents:
+    if not _separate_trees(workspace_root, game_root):
         raise ValueError("workspace_root and game_root must be separate directory trees")
-    executable = game_root / ("swkotor.exe" if game == "K1" else "swkotor2.exe")
-    chitin = game_root / "chitin.key"
-    if not executable.is_file() or executable.is_symlink() or not chitin.is_file() or chitin.is_symlink():
-        raise ValueError(f"game_root does not contain the expected safe {game} executable and chitin.key")
+    game_root = _validated_game_root(arguments, game)
+    external = None if backup_root in (None, "") else _validated_backup_root(backup_root, game_root)
+    expected = None if expect_existing in (None, "") else _expected_state(expect_existing, "expect_existing")
     policy = str(arguments.get("on_conflict", "block") or "block").strip().lower()
     if policy not in {"block", "backup"}:
         raise ValueError("on_conflict must be block or backup")
@@ -3788,7 +3878,13 @@ def _install_override_resource(arguments: Mapping[str, Any], *, resource: object
     blocking = [row.message for row in stage.issues if row.blocking]
     if not stage.ok or blocking:
         raise ValueError("Override staging failed: " + "; ".join(blocking or ["stage was not committed"]))
-    installed = NarrativePackagingService.install_override(stage.stage_path, game_root, on_conflict=policy)
+    installed = NarrativePackagingService.install_override(
+        stage.stage_path,
+        game_root,
+        on_conflict=policy,
+        backup_root=external,
+        expected_existing=None if expected is None else {resource.filename: expected},
+    )
     blocking = [row.message for row in installed.issues if row.blocking]
     if not installed.ok or blocking:
         raise ValueError("Override install failed: " + "; ".join(blocking or ["install was not committed"]))
@@ -3804,6 +3900,8 @@ def _install_override_resource(arguments: Mapping[str, Any], *, resource: object
         "stage_manifest": stage.manifest_path,
         "backup_path": installed.backup_path,
         "receipt_path": installed.receipt_path,
+        "backup_location": "game_root" if external is None else "external",
+        "expected_existing": expected,
         "installed": list(installed.installed),
         "skipped_identical": list(installed.skipped_identical),
         "conflict_policy": policy,
@@ -3824,7 +3922,67 @@ def _write_override_payload(arguments: Mapping[str, Any]) -> dict[str, Any]:
         str(arguments.get("restype", "")),
         data,
     )
-    return _install_override_resource({**dict(arguments), "game": game}, resource=resource)
+    return _install_override_resource(
+        {**dict(arguments), "game": game},
+        resource=resource,
+        backup_root=arguments.get("backup_root"),
+        expect_existing=arguments.get("expect_existing"),
+    )
+
+
+def _restore_override_payload(arguments: Mapping[str, Any]) -> dict[str, Any]:
+    """Compare-and-swap undo of one writeOverride install (prior bytes or removal)."""
+
+    from src.core.scripting.packaging import NarrativePackagingService, PackageResource
+
+    if arguments.get("confirm_restore") is not True:
+        raise ValueError("confirm_restore must be literal true before GhostStudio may change a game installation")
+    game = _compat_game(arguments.get("game", "K1"))
+    game_root = _validated_game_root(arguments, game)
+    backup_root = _validated_backup_root(arguments.get("backup_root"), game_root)
+    expected = _expected_state(arguments.get("expect_current"), "expect_current")
+    if expected == "absent":
+        raise ValueError("expect_current must be the installed SHA-256")
+    has_prior = "prior_data_b64" in arguments and arguments.get("prior_data_b64") is not None
+    remove = arguments.get("remove_file") is True
+    if has_prior == remove:
+        raise ValueError("Provide exactly one of prior_data_b64 or remove_file=true")
+    prior = None
+    if has_prior:
+        raw = arguments.get("prior_data_b64")
+        # A zero-byte prior file is legal; _decode_compat_base64 requires text.
+        prior = b"" if raw == "" else _decode_compat_base64(raw, "prior_data_b64")
+    resource = PackageResource(_compat_resref(arguments.get("resref")), str(arguments.get("restype", "")), b"")
+    result = NarrativePackagingService.restore_override_file(
+        game_root,
+        resource.resref,
+        resource.restype,
+        expected_current_sha256=expected,
+        backup_root=backup_root,
+        prior_data=prior,
+    )
+    blocking = [row.message for row in result.issues if row.blocking]
+    if not result.ok or blocking:
+        raise ValueError("Override restore failed: " + "; ".join(blocking or ["restore was not committed"]))
+    destination = game_root / "Override" / resource.filename
+    if prior is None:
+        if destination.exists():
+            raise ValueError("Override file is still present after removal")
+    elif not destination.is_file() or destination.is_symlink() or destination.read_bytes() != prior:
+        raise ValueError("Override destination failed exact post-restore readback")
+    return {
+        "game": game,
+        "resref": resource.resref,
+        "restype": resource.restype,
+        "path": str(destination),
+        "action": result.action,
+        "pre_restore_sha256": result.pre_restore_sha256,
+        "restored_sha256": result.restored_sha256,
+        "backup_path": result.backup_path,
+        "receipt_path": result.receipt_path,
+        "written": True,
+        "engine_proof": "not_recorded",
+    }
 
 
 def _write_lip_payload(arguments: Mapping[str, Any]) -> dict[str, Any]:
@@ -4086,6 +4244,7 @@ async def handle_service_alias(name: str, arguments: Dict[str, Any]) -> Dict[str
             "writeSSF": _write_ssf_payload,
             "writePTH": _write_pth_payload,
             "writeOverride": _write_override_payload,
+            "ghoststudio_restore_override": _restore_override_payload,
         }
         if name in writer_handlers:
             response = writer_handlers[name](arguments)
@@ -4270,9 +4429,16 @@ async def handle_service_alias(name: str, arguments: Dict[str, Any]) -> Dict[str
                 max_chars=250_000,
             )
     except Exception as exc:
-        return json_content({"error": str(exc).strip() or exc.__class__.__name__, "legacy_tool": name})
+        payload = json_content({"error": str(exc).strip() or exc.__class__.__name__, "legacy_tool": name})
+        if name in _GAME_INSTALL_WRITERS:
+            payload["isError"] = True
+        return payload
 
     raise ValueError(f"Unknown GhostScripter compatibility tool: {name}")
+
+
+# Game-install mutators report refusals and failures as MCP isError results.
+_GAME_INSTALL_WRITERS = frozenset({"writeOverride", "ghoststudio_restore_override"})
 
 
 __all__ = [

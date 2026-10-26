@@ -108,6 +108,71 @@ def test_head_is_grafted_into_the_composed_model_tree() -> None:
     assert "pmhc01" in child_names or "pmhc01_head" in child_names
 
 
+def test_canonical_preview_can_keep_nonvisual_inventory_without_failing() -> None:
+    _configure_native_python_roots()
+    from src.systems.bas.preview_composer import build_bas_preview_model
+
+    from src.core.geometry import model_data as md
+
+    body_root = md.ModelNode(name="turret", flags=int(md.NodeFlags.HEADER))
+    body = md.KotorModel(name="turret", root_node=body_root)
+    weapon_root = md.ModelNode(name="blaster", flags=int(md.NodeFlags.HEADER))
+    weapon = md.KotorModel(name="w_blstrpstl_001", root_node=weapon_root)
+    weapon._gr_source_resref = "w_blstrpstl_001"
+
+    preview = build_bas_preview_model(
+        body_model=body,
+        attachment_models={"right_weapon": weapon},
+        skip_unsupported=True,
+    )
+
+    assert preview.name == "turret"
+    assert preview._gr_bas_skipped_attachments == (
+        {
+            "slot": "right_weapon",
+            "socket": "rhand",
+            "resref": "w_blstrpstl_001",
+        },
+    )
+
+
+def test_composed_export_preserves_head_skin_for_shared_facial_animation_frame() -> None:
+    _configure_native_python_roots()
+    from src.core.geometry import model_data as md
+    from src.systems.bas.preview_composer import (
+        build_bas_preview_model,
+        prepare_bas_composed_export_model,
+    )
+
+    body = _body_with_headhook()
+    head_root = md.ModelNode(name="n_test_head", flags=int(md.NodeFlags.HEADER))
+    head_shell = md.ModelNode(
+        name="head",
+        flags=int(md.NodeFlags.HEADER) | int(md.NodeFlags.MESH) | int(md.NodeFlags.SKIN),
+        parent=head_root,
+        position=(0.0, 0.0, 2.0),
+        vertices=[(0.0, 0.0, 0.0), (0.2, 0.0, 0.0), (0.0, 0.2, 0.0)],
+        faces=[(0, 1, 2)],
+    )
+    head_root.children.append(head_shell)
+    preview = build_bas_preview_model(
+        body_model=body,
+        attachment_models={"head": md.KotorModel(name="n_test_head", root_node=head_root)},
+    )
+
+    exported, report = prepare_bas_composed_export_model(preview, require_unique_body_names=True)
+    exported_shell = next(
+        node for node in exported.all_nodes()
+        if str(getattr(node, "name", "")).casefold() == "head"
+        and bool(getattr(node, "vertices", None))
+    )
+
+    assert exported_shell.position == pytest.approx((0.0, 0.0, 2.0))
+    assert exported_shell.is_skin is True
+    assert report["rigid_head_geometry"] == []
+    assert report["animated_head_geometry"] == ["head"]
+
+
 def test_character_builder_bas_reads_the_canonical_scene_slot() -> None:
     """BAS must not lose a body to a duplicate legacy PartSlot enum."""
 

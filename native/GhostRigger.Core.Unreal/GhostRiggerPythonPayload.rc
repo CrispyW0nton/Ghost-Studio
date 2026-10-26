@@ -1,5 +1,6 @@
 // Generated Phase 1.5 Python payload resources. Original Python files remain in src/.
 PYTHON_PAYLOAD_MANIFEST RCDATA "GhostRiggerPythonPayload.json"
+PYTHON_PAYLOAD_ADAPTERS_KOTOR_RETAIL_PIPELINE RCDATA "Python/src/adapters/kotor_retail_pipeline.py"
 PYTHON_PAYLOAD_UNREAL_INIT RCDATA "Python/src/unreal/__init__.py"
 PYTHON_PAYLOAD_UNREAL_ANIMATION_RETARGETING RCDATA "Python/src/unreal/animation_retargeting.py"
 PYTHON_PAYLOAD_UNREAL_QUINN RCDATA "Python/src/unreal/quinn.py"
