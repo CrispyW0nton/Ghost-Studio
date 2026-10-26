@@ -16,6 +16,7 @@ from src.core.modules.authored_module_kmap_bridge import create_dev_test_authore
 def inputs(tmp_path, monkeypatch):
     from src.core.assets import resource_manager
     manager = SimpleNamespace(set_k1_dir=lambda *_: True, set_k2_dir=lambda *_: True,
+                              get_texture=lambda *args, **kwargs: None,
                               load_texture_image=lambda *args, **kwargs: None)
     monkeypatch.setattr(resource_manager, "ResourceManager", lambda: manager)
     payload = create_dev_test_authored_module_payload()

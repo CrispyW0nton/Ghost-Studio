@@ -296,6 +296,7 @@ PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_DOCK_HOSTS RCDATA "Python/src
 PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_EDITOR_SERVICES RCDATA "Python/src/gui/windows/application_core/shared/editor_services.py"
 PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_GEOMETRY RCDATA "Python/src/gui/windows/application_core/shared/geometry.py"
 PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_GUI_EDITOR_WORKFLOW RCDATA "Python/src/gui/windows/application_core/shared/gui_editor_workflow.py"
+PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_KAIGEN_CONTROL RCDATA "Python/src/gui/windows/application_core/shared/kaigen_control.py"
 PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_LOG_PANEL RCDATA "Python/src/gui/windows/application_core/shared/log_panel.py"
 PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MAIN_LAYOUT RCDATA "Python/src/gui/windows/application_core/shared/main_layout.py"
 PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MODEL_IO RCDATA "Python/src/gui/windows/application_core/shared/model_io.py"

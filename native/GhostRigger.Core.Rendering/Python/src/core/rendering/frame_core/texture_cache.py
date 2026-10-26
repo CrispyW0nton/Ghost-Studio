@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+import weakref
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from .dependencies import Image, _NUMPY, _PIL, log, np
@@ -64,6 +65,8 @@ class TextureCache:
     """
 
     MAX_SIZE = 512   # max viewport texture resolution per axis
+    MAX_MIP_BYTES = 32 * 1024 * 1024
+    MAX_MIP_ENTRIES = 128
     # Raised from 256→512: KotOR textures are typically 128×128 or 256×256.
     # At 512px cap we load textures at their native resolution (no downscale for
     # typical sizes), eliminating the main source of blurry/blocky texture rendering.
@@ -91,7 +94,9 @@ class TextureCache:
         self._load_locks_lock = threading.Lock()  # protects _load_locks dict itself
         # Mip-bias cache: per-INSTANCE so clear_mip_cache() only affects this cache.
         # (Was previously a class-level dict which caused id() reuse bugs across instances.)
-        self._mip_bias_cache: Dict[int, Optional['Image.Image']] = {}
+        # Derived pixels are disposable; authored/base textures are not.
+        # Weak source identities prevent address reuse from returning old pixels.
+        self._mip_bias_cache = {}
 
     def set_search_dirs(self, dirs: List[str]):
         new_dirs = [d for d in dirs if d and os.path.isdir(d)]
@@ -100,6 +105,7 @@ class TextureCache:
             if new_dirs != self._search_dirs:
                 self._search_dirs = new_dirs
                 self._cache.clear()
+                self._mip_bias_cache = {}
                 self._cache.update(self._published_images)
                 self._txi_cache.clear()
                 # Clear per-key load locks too (keys may no longer be relevant)
@@ -118,6 +124,7 @@ class TextureCache:
                 self._game_library = library
                 self._game_tag = game_tag
                 self._cache.clear()
+                self._mip_bias_cache = {}
                 self._cache.update(self._published_images)
                 self._txi_cache.clear()
                 with self._load_locks_lock:
@@ -129,6 +136,7 @@ class TextureCache:
                 # from the correct game's archives.
                 self._game_tag = game_tag
                 self._cache.clear()
+                self._mip_bias_cache = {}
                 self._cache.update(self._published_images)
                 self._txi_cache.clear()
                 with self._load_locks_lock:
@@ -146,6 +154,7 @@ class TextureCache:
                 self._installation = installation
                 self._game_tag = game_tag
                 self._cache.clear()
+                self._mip_bias_cache = {}
                 self._cache.update(self._published_images)
                 self._txi_cache.clear()
                 with self._load_locks_lock:
@@ -179,6 +188,7 @@ class TextureCache:
                     # We don't set it here to avoid the old path running — the new
                     # _resource_manager path takes priority in _load().
                 self._cache.clear()
+                self._mip_bias_cache = {}
                 self._cache.update(self._published_images)
                 self._txi_cache.clear()
                 with self._load_locks_lock:
@@ -505,6 +515,9 @@ class TextureCache:
                 self._cache[key] = target
 
             # Same-object edits still need derived mip data to be regenerated.
+            # Replacing the map also prevents an in-flight resize from publishing
+            # pixels sampled before this edit.
+            self._mip_bias_cache = self._mip_bias_cache.copy()
             self._mip_bias_cache.pop(id(target), None)
             if previous is not None and previous is not target:
                 self._mip_bias_cache.pop(id(previous), None)
@@ -555,6 +568,7 @@ class TextureCache:
         """
 
         with self._lock:
+            self._mip_bias_cache = self._mip_bias_cache.copy()
             for key, published in tuple(self._published_images.items()):
                 if self._cache.get(key) is published:
                     self._cache.pop(key, None)
@@ -970,38 +984,57 @@ class TextureCache:
     # lookup area, cutting per-frame cost roughly 4× for large textures.
 
     def get_mip1(self, img: 'Image.Image') -> Optional['Image.Image']:
-        """
-        Return a half-resolution (mip-level-1) version of *img*.
+        """Return half-resolution pixels within a disposable preview budget.
 
-        The result is cached by image identity (id(img)).  The cache is
-        intentionally per-instance so it can be cleared when textures reload.
-        UE's equivalent is the mip-bias applied during interactive camera
-        movement to prevent bandwidth-heavy full-resolution sampling.
-
-        Thread-safety (v10.4): reads and writes are protected by a local
-        reference snapshot so a concurrent clear_mip_cache() call from the
-        main thread cannot corrupt a partial dict access mid-read.
+        Resize outside the cache lock; a resource change or paint update while
+        resizing invalidates the captured map and prevents stale publication.
+        Keep live cached mips stable. When full, use the original pixels instead
+        of repeatedly resizing/evicting every texture in an oversized scene.
+        No base image, authored pixels, or source file is evicted.
         """
         if img is None or not _PIL:
             return img
         key = id(img)
-        # FIX (v10.4): snapshot the cache dict reference so that a concurrent
-        # clear_mip_cache() (which reassigns self._mip_bias_cache) doesn't
-        # cause a KeyError or corrupt iteration in the render thread.
-        cache = self._mip_bias_cache
-        cached = cache.get(key)
-        if cached is not None:
-            return cached
+        with self._lock:
+            cache = self._mip_bias_cache
+            cached = cache.get(key)
+            if cached is not None:
+                if cached[0]() is img:
+                    return cached[1]
+                cache.pop(key)
+
+        w, h = img.size
+        nw, nh = max(1, w // 2), max(1, h // 2)
+        # Pillow uses four-byte storage for RGB as well as RGBA. Budget without
+        # allocating a temporary pixel buffer or resizing an over-budget image.
+        pixel_bytes = nw * nh * max(4, len(img.getbands()))
+
+        def has_capacity() -> bool:
+            for stale_key, (source_ref, _image, _size) in tuple(cache.items()):
+                if source_ref() is None:
+                    cache.pop(stale_key)
+            return (
+                len(cache) < self.MAX_MIP_ENTRIES
+                and sum(entry[2] for entry in cache.values()) + pixel_bytes <= self.MAX_MIP_BYTES
+            )
+
+        with self._lock:
+            if cache is not self._mip_bias_cache or not has_capacity():
+                return img
         try:
-            w, h = img.size
-            nw = max(1, w // 2)
-            nh = max(1, h // 2)
             mip = img.resize((nw, nh), Image.BOX if hasattr(Image, 'BOX') else Image.NEAREST)
-            cache[key] = mip
-            return mip
         except Exception:
-            cache[key] = img
             return img
+
+        with self._lock:
+            if cache is not self._mip_bias_cache:
+                return mip
+            cached = cache.get(key)
+            if cached is not None and cached[0]() is img:
+                return cached[1]
+            if has_capacity():
+                cache[key] = (weakref.ref(img), mip, pixel_bytes)
+        return mip
 
     def clear_mip_cache(self):
         """Clear mip-bias cache (call when textures reload).
@@ -1011,7 +1044,8 @@ class TextureCache:
         valid (it will just miss new entries), avoiding a race between the
         main-thread clear and a render-thread read.
         """
-        self._mip_bias_cache = {}
+        with self._lock:
+            self._mip_bias_cache = {}
 
     def sample(self, img: 'Image.Image', u: float, v: float,
                clamp_s: bool = False, clamp_t: bool = False) -> Tuple[int,int,int]:

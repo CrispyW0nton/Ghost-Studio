@@ -21,6 +21,7 @@ PYTHON_PAYLOAD_CORE_GEOMETRY_MAP_SNAP_TOOLS RCDATA "Python/src/core/geometry/map
 PYTHON_PAYLOAD_CORE_GEOMETRY_MESH_TOPOLOGY RCDATA "Python/src/core/geometry/mesh_topology.py"
 PYTHON_PAYLOAD_CORE_GEOMETRY_MODEL_DATA RCDATA "Python/src/core/geometry/model_data.py"
 PYTHON_PAYLOAD_CORE_GEOMETRY_POLYGON_MESH_OPERATIONS RCDATA "Python/src/core/geometry/polygon_mesh_operations.py"
+PYTHON_PAYLOAD_CORE_GEOMETRY_SEE_THROUGH_AUDIT RCDATA "Python/src/core/geometry/see_through_audit.py"
 PYTHON_PAYLOAD_CORE_GEOMETRY_SOLID_BOOLEAN RCDATA "Python/src/core/geometry/solid_boolean.py"
 PYTHON_PAYLOAD_CORE_GEOMETRY_VERTEX_SPACE RCDATA "Python/src/core/geometry/vertex_space.py"
 PYTHON_PAYLOAD_CORE_RENDERING_FRAME_CORE_MATH_HELPERS RCDATA "Python/src/core/rendering/frame_core/math_helpers.py"

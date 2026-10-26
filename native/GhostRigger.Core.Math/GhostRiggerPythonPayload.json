@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Math",
-    "file_count": 66,
+    "file_count": 67,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -130,6 +130,12 @@
             "source_path": "src/core/geometry/polygon_mesh_operations.py",
             "packaged_path": "Python/src/core/geometry/polygon_mesh_operations.py",
             "sha256": "2ddb82fafa2801bb528805ec42528b7712c66e86f48eb02a3d60d476e9db410c"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_GEOMETRY_SEE_THROUGH_AUDIT",
+            "source_path": "src/core/geometry/see_through_audit.py",
+            "packaged_path": "Python/src/core/geometry/see_through_audit.py",
+            "sha256": "62c540d72922f4dbd5538d434e4fb4241f1be382dcf94fde47a71bfc15ad69f4"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_GEOMETRY_SOLID_BOOLEAN",
@@ -321,7 +327,7 @@
             "resource_name": "PYTHON_PAYLOAD_MATH_UNREAL_LEVEL_SPACE",
             "source_path": "src/math/unreal_level_space.py",
             "packaged_path": "Python/src/math/unreal_level_space.py",
-            "sha256": "0e2bfaf69ebb88bdde1aa8b7f59b7211d7840a9ab1b73e846d1a2c72a941772a"
+            "sha256": "283c4e7eaa65e089b3fe00fc3a5d2680339f3912a89a6053cdea32f04934664f"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_MATH_UNREAL_NATIVE_SURFACE",

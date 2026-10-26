@@ -33,7 +33,7 @@
             "resource_name": "PYTHON_PAYLOAD_CONVERTERS_MESH_CONVERTER",
             "source_path": "src/converters/mesh_converter.py",
             "packaged_path": "Python/src/converters/mesh_converter.py",
-            "sha256": "5d35e5a68d6cf78de1b54dfd096d6bf0a7f0201b964c7c6432a7897c91b20b9c"
+            "sha256": "9e0d20e9814009cd5ab97fdde9bdabb3c17d274380a9372fa9ab6ed4769e019c"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CONVERTERS_NORMAL_MAP",
@@ -303,7 +303,7 @@
             "resource_name": "PYTHON_PAYLOAD_IO_LEVEL_SCENE_EXPORT",
             "source_path": "src/io/level_scene_export.py",
             "packaged_path": "Python/src/io/level_scene_export.py",
-            "sha256": "eee499866ef40d513bd91b3f4e0c678ff2f8906df8681df4e572d4ee026ff39a"
+            "sha256": "960fab63965ba3efbcb3244a60df142ab57784ae721d828c5122fbdee9d664c7"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_IO_MDL_AUTO_IMPORT",

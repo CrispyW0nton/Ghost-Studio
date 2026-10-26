@@ -1,7 +1,7 @@
 [
     {
         "project": "GhostRigger.Core.Automation",
-        "python_file_count": 48,
+        "python_file_count": 51,
         "files": [
             "src\\adapters\\scripts\\__init__.py",
             "src\\adapters\\scripts\\unavailable_compiler.py",
@@ -9,6 +9,7 @@
             "src\\ghoststudio_spatial_mcp\\server.py",
             "src\\ipc\\__init__.py",
             "src\\ipc\\client.py",
+            "src\\ipc\\kaigen_gui_control.py",
             "src\\ipc\\server.py",
             "src\\ipc\\spatial_auth.py",
             "src\\ipc\\spatial_pipe.py",
@@ -41,6 +42,7 @@
             "src\\kotormcp\\tools\\kotor_input.py",
             "src\\kotormcp\\tools\\kotor_live_log.py",
             "src\\kotormcp\\tools\\legacy_ghostscripter.py",
+            "src\\kotormcp\\tools\\level_export.py",
             "src\\kotormcp\\tools\\modules.py",
             "src\\kotormcp\\tools\\quest.py",
             "src\\kotormcp\\tools\\refs.py",
@@ -49,13 +51,14 @@
             "src\\kotormcp\\tools\\walkmesh.py",
             "src\\kotormcp\\utils\\__init__.py",
             "src\\kotormcp\\utils\\formatting.py",
+            "src\\kotormcp\\utils\\path_safety.py",
             "src\\max2021_mcp\\__init__.py",
             "src\\max2021_mcp\\server.py"
         ]
     },
     {
         "project": "GhostRigger.Core.GUI.Display",
-        "python_file_count": 331,
+        "python_file_count": 332,
         "files": [
             "src\\gui\\__init__.py",
             "src\\gui\\assets\\__init__.py",
@@ -353,6 +356,7 @@
             "src\\gui\\windows\\application_core\\shared\\editor_services.py",
             "src\\gui\\windows\\application_core\\shared\\geometry.py",
             "src\\gui\\windows\\application_core\\shared\\gui_editor_workflow.py",
+            "src\\gui\\windows\\application_core\\shared\\kaigen_control.py",
             "src\\gui\\windows\\application_core\\shared\\log_panel.py",
             "src\\gui\\windows\\application_core\\shared\\main_layout.py",
             "src\\gui\\windows\\application_core\\shared\\model_io.py",
@@ -473,7 +477,7 @@
     },
     {
         "project": "GhostRigger.Core.Math",
-        "python_file_count": 66,
+        "python_file_count": 67,
         "files": [
             "src\\core\\camera\\__init__.py",
             "src\\core\\camera\\arcball_camera.py",
@@ -496,6 +500,7 @@
             "src\\core\\geometry\\mesh_topology.py",
             "src\\core\\geometry\\model_data.py",
             "src\\core\\geometry\\polygon_mesh_operations.py",
+            "src\\core\\geometry\\see_through_audit.py",
             "src\\core\\geometry\\solid_boolean.py",
             "src\\core\\geometry\\vertex_space.py",
             "src\\core\\rendering\\frame_core\\math_helpers.py",
@@ -578,7 +583,7 @@
     },
     {
         "project": "GhostRigger.Core.Rendering",
-        "python_file_count": 131,
+        "python_file_count": 135,
         "files": [
             "src\\adapters\\gpu\\__init__.py",
             "src\\adapters\\gpu\\lightmap_baker.py",
@@ -612,12 +617,15 @@
             "src\\adapters\\rendering\\wgpu_core\\shared.py",
             "src\\adapters\\rendering\\wgpu_renderer_exports.py",
             "src\\core\\graphics\\__init__.py",
+            "src\\core\\graphics\\kworld_sidecar.py",
             "src\\core\\graphics\\tex_atlas.py",
             "src\\core\\graphics\\tpc.py",
+            "src\\core\\graphics\\tpc_dxt_writer.py",
             "src\\core\\graphics\\tpc_render_utils.py",
             "src\\core\\graphics\\txi.py",
             "src\\core\\lighting\\__init__.py",
             "src\\core\\lighting\\aurora_light_adapter.py",
+            "src\\core\\lighting\\kotor_engine_lighting.py",
             "src\\core\\lighting\\light_export_bridge.py",
             "src\\core\\lighting\\light_gizmo_renderer.py",
             "src\\core\\lighting\\light_grouping.py",
@@ -636,6 +644,7 @@
             "src\\core\\lighting\\lightmap_export_bridge.py",
             "src\\core\\lighting\\lightmap_lighting_solver.py",
             "src\\core\\lighting\\lightmap_manifest.py",
+            "src\\core\\lighting\\lightmap_outdoor_solver.py",
             "src\\core\\lighting\\lightmap_output.py",
             "src\\core\\lighting\\lightmap_padding.py",
             "src\\core\\lighting\\lightmap_rasterizer.py",
@@ -888,7 +897,7 @@
     },
     {
         "project": "GhostRigger.Core.Tools",
-        "python_file_count": 405,
+        "python_file_count": 406,
         "files": [
             "src\\adapters\\qt_viewport\\camera_gizmo_renderer.py",
             "src\\adapters\\qt_viewport\\camera_overlays.py",
@@ -935,6 +944,7 @@
             "src\\core\\level\\map_studio_texture_sidecar_journal.py",
             "src\\core\\lighting\\__init__.py",
             "src\\core\\lighting\\aurora_light_adapter.py",
+            "src\\core\\lighting\\kotor_engine_lighting.py",
             "src\\core\\lighting\\light_export_bridge.py",
             "src\\core\\lighting\\light_gizmo_renderer.py",
             "src\\core\\lighting\\light_grouping.py",

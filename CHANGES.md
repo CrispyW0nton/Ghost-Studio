@@ -1,5 +1,15 @@
 # Changes
 
+## 2026-10-26 — Publish the latest local Ghost Studio source (T3105 supporting work)
+
+- Owner: LordVaderCW.
+- Captured the accumulated local authoring, Unreal import, character/export, lighting, secondary-motion and automation work, including 25 previously ignored regression test files. Generated game assets, runtime state, private configuration and nested worktrees remain outside the publication.
+- Combined the source checkpoint with all four newer GitHub default-branch commits. Preserved the newer local canonical level-export texture/UV behavior and the upstream browser-loading and texture-preview-memory changes, plus both sets of documentation.
+- Refreshed all 18 native Python package manifests, resource lists and project registrations, synchronized the level-export payload to its canonical source, and applied the existing LF policy before hashing. Updated the MCP level-export test fixture to expose the raw-byte ResourceManager texture API used by the current exporter.
+- Verification: 301 changed Python files compiled without execution; no credential-pattern candidates in the selected source files. 68 focused checks passed across level FBX/OBJ export, saved-scene MCP export, browser module-loading contracts, native payload hashes/resources/project registrations, Unreal pipeline payloads and repository secret hygiene. The original working checkout and its Git index were preserved.
+- Publication scope: source checkpoint. Existing feature-specific limitations in this log remain applicable. Native binaries were not rebuilt; the outstanding Visual Studio Debug application, UI/theme, retail and workflow acceptance checks were not performed in this publication task.
+- Intersects: `github/ghost-studio` at `5dc8544b` and local `codex/publish-ghost-studio-20260805` at `e1755571`; level export, native package metadata, Map Studio integration and shared documentation.
+
 ## 2026-10-01 — Spatial MCP request metadata compatibility (Kaigen usage audit)
 
 - Owner: Kaigen usage-intelligence task. The standalone Core.Automation spatial
@@ -124,6 +134,25 @@
 - Verification: 33 focused importer and GPU tests passed. Matched-camera GPU captures show the exported buildings/props after the culling fix. This is headless evidence, not native Debug UI or retail game acceptance. The active unrelated K2 combat session was preserved; retail traversal/save/reload remains pending. T3105 is not complete.
 - Payload ownership: IO, Math and Scene for the importer; Rendering for the culling fix. Scene/Rendering generators succeeded. Existing IO `mdl_writer.py` and Math `head_skin_transfer.py` source/payload differences prevent full regeneration; only the new byte-identical import files were registered in those packages. No other source edits were synchronized and no native DLL build is claimed.
 - Root payload coverage additionally fails on the existing unregistered `src/core/modules/kotor_dialogue_manifest.py`; all four task-owned changed payload files pass targeted hash/registration checks. The count assertion now includes the three prior whole-level-export payloads and these three importer payloads.
+## 2026-09-25 — Main-branch module loading and preview memory updates
+
+- Owner: LordVaderCW.
+- Apply the selected-room default / connected-map option and bounded software
+  texture previews to the existing `ghost-studio` default branch at the user's
+  request. Preserve the newer whole-level export changes.
+- Intersects: `ghost-studio` commits `7076d2e1` and `b91be099`; GUI Display
+  payload manifest and changelog. Original work: `438ba8f0` and `1c6284e9`.
+- Verification: 46 focused module-loading, module-placement, texture-cache,
+  resource-revision, and payload-manifest checks passed on the combined tree;
+  `git diff --check` passed. Prior native visual verification remains blocked
+  by capture/input failures; this publication does not claim a new UI pass.
+
+## 2026-09-13 — T2904/T2906 default-branch publication
+
+- Owner: LordVaderCW.
+- Publish the verified whole-level FBX/OBJ and saved-KMAP MCP implementation on the default `ghost-studio` branch at the user's request. Updated the export guide to distinguish current source from older downloaded executables.
+- Verification: the existing default tip is an ancestor of the tested export commit, so publication preserves history. The source implementation and prior targeted test/Debug build results are unchanged; desktop workflow acceptance remains unverified as recorded below. No new executable release is included.
+- Intersects: commits `8db0b6c3`, `67b69196`, `e1755571`, and `7076d2e1` carrying the accumulated authoring/runtime and module-export updates.
 
 ## 2026-09-13 — T2904/T2906 whole-level mesh export
 
@@ -158,6 +187,7 @@
 - Verification: 169-tool stdio catalog; `compare_model_pipelines`, native and Ghost inspection pass for K2 PFBKM/PMBKM. The original direct render reproduction returned None; after the change it wrote a 384x512 PNG using the GPU in 1.985 seconds. Evidence: BetterArmor/ProductionReviews/ArmoredFlightSuit_20260909/ghost_render_fixed.log.
 - Follow-up: the stdio call separately stalled during first NumPy native-extension initialization after AnyIO workers started. Preloading NumPy in `scripts/mcp/start_kotormcp_stdio.py` before server startup resolved the reproduced call. Both PFBKM and PMBKM now return status=ok, backend=gpu, and write PNGs in one normal MCP client session (4.7 seconds total). Evidence: `ghost_repaired_stdio_pair.json` and log in the same BetterArmor review folder. No native DLL rebuild is claimed.
 - Intersects: pre-existing uncommitted Automation handler changes. Only the forced-CPU line and corresponding error were changed for this repair; no embedded DLL rebuild or retail-game proof is claimed.
+- Intersects: existing uncommitted work on `codex/publish-ghost-studio-20260805` in Core.IO mesh conversion/export transactions, Core.Tools module window/controller and native manifests. Only this export change is isolated for publication; unrelated edits are preserved. GitHub default `ghost-studio` was at `4d15cfc5` before this update.
 
 This file records completed fixes and software changes so future agents can see what has already been done and avoid repeating work.
 
@@ -713,6 +743,52 @@ Verification:
   palette bones; Unreal created the 21-bone skeletal mesh and rebuilt
   `cpause1` as 20 accepted tracks with 566 keys at 30 fps and no rejected
   tracks.
+## 2026-09-25
+
+### Choose module loading scope in Content Browser (pending visible qualification)
+
+Owner: LordVaderCW
+
+Subsystem: Content Browser / main-scene import; GhostRigger.Core.GUI.Display.
+
+- Add a Module loading dropdown above the asset list: Selected room only
+  (default) or Entire connected map. Save the preference between sessions.
+- Route double-click and main-scene context actions through this choice before
+  resolving the full module layout; preserve the existing connected-room path.
+- Keep an open Settings dialog's snapshot in sync so it cannot undo the choice.
+- These GUI files are package-local owners in this checkout: no matching root
+  src files exist. Regenerated the GUI Display payload manifest.
+- Verification: 25 focused tests passed; Debug|x64 native host built successfully.
+  Native app launched through Visual Studio; screenshot capture and coordinate
+  input failed, so visual/theme and live room-load qualification remain pending.
+  Seven older browser/theme test failures reproduced with unchanged code.
+  Details: docs/audits/2026-09-25-module-loading-scope.md.
+
+### Bound software viewport texture previews (pending visible qualification)
+
+Owner: LordVaderCW
+
+Subsystem: GhostRigger.Core.Rendering, frame rendering texture-cache lifecycle.
+
+- Bound derived half-resolution texture pixels to 32 MiB / 128 entries per cache;
+  retain live previews and use existing base pixels when full to avoid repeated
+  resize/eviction work in larger scenes. Base and authored textures are preserved.
+- Clear derived pixels on texture-source changes, verify weak source identities,
+  and prevent in-flight resize work from repopulating an invalidated cache.
+- The implementation remains package-local at
+  `native/GhostRigger.Core.Rendering/Python/src/core/rendering/frame_core/texture_cache.py`:
+  this split-source checkout has no root `src` counterpart. Regenerated Rendering's
+  payload manifest; the native host build also corrected one stale Tools payload
+  hash without changing Tools source.
+- Verification: 24 targeted tests passed, including real K2 texture decode parity,
+  authored-image retention, paint updates, invalidation races, and payload hashes.
+  A 160 x 512-square RGBA texture probe retained 40 MiB of derived pixels after a
+  library change before the fix; the fix retains at most 32 MiB and zero after the
+  change. Debug native host build succeeded and launched through Visual Studio.
+  Visible viewport proof remains blocked by desktop-capture timeouts.
+- Scope limit: this is a software texture-preview cache fix, not a verified cure
+  for the community report of module/NPC/VFX crashes. Full-map loading, base CPU
+  textures, GPU residency, and reporter-specific crash evidence remain separate.
 
 ## 2026-08-05
 

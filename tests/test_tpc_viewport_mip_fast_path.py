@@ -9,6 +9,145 @@ from types import SimpleNamespace
 import pytest
 
 
+@pytest.mark.parametrize("change", ("library", "game", "installation", "paths", "revision"))
+def test_texture_source_change_releases_derived_mips(change, tmp_path):
+    from PIL import Image
+    from src.core.rendering.frame_core.texture_cache import TextureCache
+
+    cache = TextureCache()
+    library = object()
+    manager = SimpleNamespace(revision=1, get_k1=lambda: None, get_k2=lambda: None)
+    cache.set_game_library(library, "K1")
+    cache.set_resource_manager(manager, "K1")
+    source = Image.new("RGBA", (32, 32), "red")
+    cache._cache["test"] = source
+    cache.get_mip1(source)
+    assert cache._mip_bias_cache
+
+    if change == "library":
+        cache.set_game_library(object(), "K1")
+    elif change == "game":
+        cache.set_game_library(library, "K2")
+    elif change == "installation":
+        cache.set_installation(object(), "K1")
+    elif change == "paths":
+        cache.set_search_dirs([str(tmp_path)])
+    else:
+        manager.revision += 1
+        cache.set_resource_manager(manager, "K1")
+    assert not cache._mip_bias_cache
+
+
+def test_derived_mip_budget_preserves_live_previews_without_resize_thrashing(monkeypatch):
+    from PIL import Image
+    from src.core.rendering.frame_core.texture_cache import TextureCache
+
+    cache = TextureCache()
+    cache.MAX_MIP_BYTES = 2 * 16 * 16 * 4
+    sources = [Image.new("RGBA", (32, 32), color) for color in ("red", "green", "blue")]
+    first = cache.get_mip1(sources[0])
+    cache.get_mip1(sources[1])
+    assert cache.get_mip1(sources[0]) is first
+    def unexpected_resize(*args, **kwargs):
+        pytest.fail("Full cache must reuse base pixels, not resize on every draw")
+
+    monkeypatch.setattr(sources[2], "resize", unexpected_resize)
+    for _ in range(3):
+        assert cache.get_mip1(sources[2]) is sources[2]
+    assert id(sources[0]) in cache._mip_bias_cache
+    assert id(sources[1]) in cache._mip_bias_cache
+    assert len(cache._mip_bias_cache) == 2
+    assert cache.get_mip1(sources[0]).getpixel((0, 0)) == (255, 0, 0, 255)
+
+
+def test_derived_mip_cache_caps_tiny_entries_and_skips_oversized_image():
+    from PIL import Image
+    from src.core.rendering.frame_core.texture_cache import TextureCache
+
+    cache = TextureCache()
+    cache.MAX_MIP_ENTRIES = 2
+    sources = [Image.new("RGBA", (2, 2)) for _ in range(3)]
+    for source in sources:
+        cache.get_mip1(source)
+    assert len(cache._mip_bias_cache) == 2
+    cache.MAX_MIP_BYTES = 4
+    source = Image.new("RGBA", (32, 32), "red")
+    assert cache.get_mip1(source) is source
+    assert id(source) not in cache._mip_bias_cache
+
+
+def test_derived_mip_does_not_reuse_pixels_from_another_source_identity():
+    from PIL import Image
+    from src.core.rendering.frame_core.texture_cache import TextureCache
+
+    cache = TextureCache()
+    red = Image.new("RGBA", (32, 32), "red")
+    blue = Image.new("RGBA", (32, 32), "blue")
+    cache.get_mip1(red)
+    # Deterministic simulation of CPython reusing a collected image's address.
+    cache._mip_bias_cache[id(blue)] = cache._mip_bias_cache.pop(id(red))
+    assert cache.get_mip1(blue).getpixel((0, 0)) == (0, 0, 255, 255)
+
+
+@pytest.mark.parametrize("invalidate", ("clear", "paint"))
+def test_mip_resize_in_flight_cannot_repopulate_invalidated_cache(monkeypatch, invalidate):
+    import threading
+    from PIL import Image
+    from src.core.rendering.frame_core.texture_cache import TextureCache
+
+    cache = TextureCache()
+    source = Image.new("RGBA", (32, 32), "red")
+    cache._cache["painted"] = source
+    started, resume = threading.Event(), threading.Event()
+    resize = source.resize
+
+    def delayed_resize(*args, **kwargs):
+        started.set()
+        assert resume.wait(5)
+        return resize(*args, **kwargs)
+
+    monkeypatch.setattr(source, "resize", delayed_resize)
+    results = []
+    worker = threading.Thread(target=lambda: results.append(cache.get_mip1(source)))
+    worker.start()
+    try:
+        assert started.wait(5)
+        if invalidate == "paint":
+            cache.update_image_regions("painted", Image.new("RGBA", (32, 32), "blue"))
+        else:
+            cache.clear_mip_cache()
+    finally:
+        resume.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert len(results) == 1
+    assert not cache._mip_bias_cache
+
+
+def test_derived_cache_reclaims_collected_sources_and_preserves_published_pixels():
+    import gc
+    import weakref
+    from PIL import Image
+    from src.core.rendering.frame_core.texture_cache import TextureCache
+
+    cache = TextureCache()
+    cache.MAX_MIP_ENTRIES = 1
+    source = Image.new("RGBA", (32, 32), "red")
+    source_ref = weakref.ref(source)
+    cache.get_mip1(source)
+    del source
+    gc.collect()
+    assert source_ref() is None
+    encoded = BytesIO()
+    Image.new("RGBA", (32, 32), "blue").save(encoded, format="PNG")
+    published = cache.publish_bytes("authored", encoded.getvalue())
+    assert cache.get_mip1(published) is not published
+    cache.set_game_library(object(), "K2")
+    assert not cache._mip_bias_cache
+    assert cache.get("authored") is published
+    assert published.getpixel((0, 0)) == (0, 0, 255, 255)
+
+
 ROOT = Path(__file__).resolve().parents[1]
 K2_ROOT = Path(r"C:\Program Files (x86)\Steam\steamapps\common\Knights of the Old Republic II")
 

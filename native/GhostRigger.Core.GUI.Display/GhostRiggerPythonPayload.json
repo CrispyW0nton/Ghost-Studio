@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.GUI.Display",
-    "file_count": 331,
+    "file_count": 332,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -729,7 +729,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_MODULE_EDITOR_MODULE_EDITOR_OUTLINER",
             "source_path": "src/gui/panels/module_editor/module_editor_outliner.py",
             "packaged_path": "Python/src/gui/panels/module_editor/module_editor_outliner.py",
-            "sha256": "f292f9868936d5f0c0b3a91b7475ba3346e58c7a3ae70fac31680ff37136c2c6"
+            "sha256": "03288f32b1f8b4f687832bba6edbebeb65fa9b20761433cdc431fb596faa35cc"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_MODULE_EDITOR_MODULE_EDITOR_PROPERTIES",
@@ -855,7 +855,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_CONTENT_BROWSER_PANEL",
             "source_path": "src/gui/panels/qt_content_browser_panel.py",
             "packaged_path": "Python/src/gui/panels/qt_content_browser_panel.py",
-            "sha256": "86dc5753ca4d7c4d2ac3169dbb32390a03656c76a08a9a41af0befcd63bf3459"
+            "sha256": "6526c408c822debe41f933dbcf4caf2b1d8f6eff9d0aea7461b50fe009f96329"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_QT_DIAGNOSTICS_PANEL",
@@ -1782,6 +1782,12 @@
             "sha256": "520280dfa614419efd6705c3a6ad343a1f0d38c2e4ae66ebc35ec55673f81b9d"
         },
         {
+            "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_KAIGEN_CONTROL",
+            "source_path": "src/gui/windows/application_core/shared/kaigen_control.py",
+            "packaged_path": "Python/src/gui/windows/application_core/shared/kaigen_control.py",
+            "sha256": "391ad49810ceb593d0457d5286a1c80653c86cd3fc69dc3fe68715f10e724fed"
+        },
+        {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_LOG_PANEL",
             "source_path": "src/gui/windows/application_core/shared/log_panel.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/log_panel.py",
@@ -1791,7 +1797,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MAIN_LAYOUT",
             "source_path": "src/gui/windows/application_core/shared/main_layout.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/main_layout.py",
-            "sha256": "973e180f42a2ed6107d0a063e93fd620e4fb4bcf76d364233f5bb3327f088c98"
+            "sha256": "b639521f54247f5ff0c4b0f831913c8429088a2048993d7cbc811b5599905c81"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_MODEL_IO",
@@ -1809,7 +1815,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_RESOURCE_LOADING",
             "source_path": "src/gui/windows/application_core/shared/resource_loading.py",
             "packaged_path": "Python/src/gui/windows/application_core/shared/resource_loading.py",
-            "sha256": "aba1bc757fda24c485bccc8b14bdf7b0ed6d3a036a2fe460b6e809fc56fdcb2f"
+            "sha256": "30ba085fab12353d81fc8dceee4276d4da09a49ace6383770ce7e262c5fe5832"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_APPLICATION_CORE_SHARED_RESOURCE_PANELS",

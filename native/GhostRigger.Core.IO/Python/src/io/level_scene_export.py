@@ -88,6 +88,8 @@ def assemble_level_model(project, options, *, resource_manager=None, model_loade
             node.vertices, node.normals, node.faces = bake_mesh_instance(
                 source_node.vertices, source_node.normals, source_node.faces,
                 position=position, rotation=rotation, transforms=transforms)
+            # Level PNGs use canonical top-left rows; MDL UVs stay unchanged.
+            node.uv_v_flip = False
             node.uvs = list(source_node.uvs)
             node.uvs_lm = list(source_node.uvs_lm)
             node.face_uvs = list(source_node.face_uvs)
@@ -125,7 +127,10 @@ def assemble_level_model(project, options, *, resource_manager=None, model_loade
             exported_nodes.append({"source_id": str(identity), "source_node": source_node.name,
                                    "mesh_node": node.name, "faces": len(node.faces),
                                    "texture": node.texture, "textures": node.texture_names,
-                                   "lightmap": node.lightmap, "lightmap_uv_channel": 1 if node.uvs_lm else None})
+                                   "lightmap": node.lightmap, "lightmap_uv_channel": 1 if node.uvs_lm else None,
+                                   "selfillum": list(node.selfillum), "alpha": node.alpha,
+                                   "diffuse": list(node.diffuse), "ambient": list(node.ambient),
+                                   "uv_convention": "mdl_unmodified", "image_rows": "top_left"})
         if not group.children:
             raise ValueError(f"No exportable mesh geometry in {identity}")
         root.children.append(group)
@@ -270,6 +275,47 @@ def export_level_scene(project, target, options, *, issues=(), resource_manager=
     return result
 
 
+
+def _decode_level_tpc(raw):
+    """Canonical top-left image, independent of viewport decoder orientation.
+
+    K2 UploadTextures 004265e0 / LoadTextureTGA 00433cd0 upload the native
+    bottom-origin stream unchanged. Decode BCn directly, then flip once for PNG.
+    The first layer/frame is the static export pose; animation remains metadata.
+    """
+    from PIL import Image
+    from pykotor.resource.formats.tpc import read_tpc, TPCTextureFormat
+    try:
+        tpc = read_tpc(raw)
+    except ValueError:
+        # Installed ebo_sky801dro has a complete declared BC base and a bad
+        # tail. Export only that proven base, as the qualified converter does.
+        import struct
+        size, _, width, height, encoding, _ = struct.unpack_from("<IfHHBB", raw)
+        block = 8 if encoding == 2 else 16 if encoding == 4 else 0
+        expected = ((width + 3) // 4) * ((height + 3) // 4) * block
+        if (not block or not (0 < width <= 4096 and 0 < height <= 4096)
+                or height == width * 6 or size != expected
+                or len(raw) < 128 + expected):
+            raise
+        image = Image.frombytes("RGBA", (width, height), raw[128:128 + expected],
+                                "bcn", (1, "DXT1") if encoding == 2 else (3, "DXT5"))
+        image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        image.info["ghost_level_decode"] = "complete_base_only_malformed_tail"
+        return image
+    mip = tpc.layers[0].mipmaps[0].copy()
+    formats = {TPCTextureFormat.DXT1: (1, "DXT1"),
+               TPCTextureFormat.DXT3: (2, "DXT3"),
+               TPCTextureFormat.DXT5: (3, "DXT5")}
+    if mip.tpc_format in formats:
+        image = Image.frombytes("RGBA", (mip.width, mip.height), bytes(mip.data),
+                                "bcn", formats[mip.tpc_format])
+    else:
+        mip.convert(TPCTextureFormat.RGBA)
+        image = Image.frombytes("RGBA", (mip.width, mip.height), bytes(mip.data))
+    return image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+
+
 class _LevelTextureImages:
     """Full-resolution, export-local image cache using the resource owner."""
     def __init__(self, project, manager, resources=()):
@@ -280,7 +326,7 @@ class _LevelTextureImages:
     def get(self, name):
         from PIL import Image
         from io import BytesIO
-        from src.core.graphics.tpc import _is_tpc_data, _load_tpc_bytes
+        from src.core.graphics.tpc import _is_tpc_data
         from src.core.level.map_studio_texture_assets import resolve_project_texture_path
         key = str(name).lower()
         if key not in self.images:
@@ -289,14 +335,16 @@ class _LevelTextureImages:
             raw = self.resources.get((key, "tga")) or self.resources.get((key, "tpc"))
             if path and Path(path).is_file():
                 raw = Path(path).read_bytes()
+            if not raw and self.manager:
+                raw = self.manager.get_texture(name, self.project.game)
             if raw:
                 if _is_tpc_data(raw):
-                    self.images[key] = _load_tpc_bytes(raw)
+                    self.images[key] = _decode_level_tpc(raw)
                 else:
                     with Image.open(BytesIO(raw)) as image:
                         self.images[key] = image.convert("RGBA")
             else:
-                self.images[key] = self.manager.load_texture_image(name, self.project.game, max_size=0) if self.manager else None
+                self.images[key] = None
         return self.images[key]
 
 
@@ -311,15 +359,16 @@ def _copy_level_textures(model, staging, stem, cache, warnings):
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
                 raise ValueError(f"Unsafe texture resource name: {name}")
             image = cache.get(name)
+            if image is not None and image.info.get("ghost_level_decode"):
+                warnings.append(f"Texture {name}: {image.info['ghost_level_decode']}")
             if image is None:
                 warnings.append(f"Texture {name} could not be resolved; its reference is retained.")
                 continue
             directory.mkdir(exist_ok=True)
             output = directory / (name + ".png")
             image = image.convert("RGBA")
-            # Both existing mesh writers emit 1-v. Match their normal texture
-            # export path by converting decoded KOTOR image row order too.
-            image = image.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+            # Export-local caches contain canonical top-left PNG rows.
+            # Both UV streams are emitted unchanged; do not flip either side.
             image.save(output)
             paths[name] = output.relative_to(staging).as_posix()
     return paths

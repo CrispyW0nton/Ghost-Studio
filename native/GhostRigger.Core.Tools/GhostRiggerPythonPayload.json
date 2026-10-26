@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Tools",
-    "file_count": 405,
+    "file_count": 406,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -207,7 +207,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_KMAP_SERIALIZER",
             "source_path": "src/core/level/kmap_serializer.py",
             "packaged_path": "Python/src/core/level/kmap_serializer.py",
-            "sha256": "4ed7f89cf978c0500f379b1e740135d15cd5d0427ebca09ab6ea8d00a124b4af"
+            "sha256": "350c534bc43effdf6356c9601d4d3b21f77b6b505c4e0c25ab847278abbc57f2"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_KMAP_VALIDATOR",
@@ -274,6 +274,12 @@
             "source_path": "src/core/lighting/aurora_light_adapter.py",
             "packaged_path": "Python/src/core/lighting/aurora_light_adapter.py",
             "sha256": "c01931e5f78c049642c866a485c9c7aec935281357a4dcb69853e87452f38eca"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_KOTOR_ENGINE_LIGHTING",
+            "source_path": "src/core/lighting/kotor_engine_lighting.py",
+            "packaged_path": "Python/src/core/lighting/kotor_engine_lighting.py",
+            "sha256": "7d5f88debd446385c7cc855f0c56ffbb23c4c909e9b3915fecf179f7eaccb9ec"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_LIGHTING_LIGHT_EXPORT_BRIDGE",
@@ -519,7 +525,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_EXPORT",
             "source_path": "src/core/modules/authored_module_export.py",
             "packaged_path": "Python/src/core/modules/authored_module_export.py",
-            "sha256": "3babfa50a98274c4f4293bc39e969b88405a2702b1d34cf877f69f529dd1637b"
+            "sha256": "dea1a211b20d23260a8c27a356a9d320d42b9c925817931cecddc956a5f4923d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_KMAP_BRIDGE",
@@ -1011,7 +1017,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_CONTROLLER",
             "source_path": "src/core/modules/module_editor_controller.py",
             "packaged_path": "Python/src/core/modules/module_editor_controller.py",
-            "sha256": "0d69f820fd51c3761f98e950abed69c173d9ffdfe50aa40954153c6a8a9e79a0"
+            "sha256": "f90f7ca1b351600b66ef2e2f77d6eadc7db60f2d0c0c67fb79d2c45d65f8a91e"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MODULE_EDITOR_MODEL",
@@ -1773,7 +1779,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_MODULE_EDITOR_MODULE_EDITOR_OUTLINER",
             "source_path": "src/gui/panels/module_editor/module_editor_outliner.py",
             "packaged_path": "Python/src/gui/panels/module_editor/module_editor_outliner.py",
-            "sha256": "f292f9868936d5f0c0b3a91b7475ba3346e58c7a3ae70fac31680ff37136c2c6"
+            "sha256": "03288f32b1f8b4f687832bba6edbebeb65fa9b20761433cdc431fb596faa35cc"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_PANELS_MODULE_EDITOR_MODULE_EDITOR_PROPERTIES",
@@ -2037,7 +2043,7 @@
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_PLACEABLE_BUILDER_CONTROLLER",
             "source_path": "src/gui/windows/qt_placeable_builder_controller.py",
             "packaged_path": "Python/src/gui/windows/qt_placeable_builder_controller.py",
-            "sha256": "9a0bf3a166d074beffe401e2380b49225a80b510fb1bce8572e6ca91b7432481"
+            "sha256": "62cf97cb3217d2779adea0ec5cd9ddcdefbe086a44004004f841500f9180305d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_GUI_WINDOWS_QT_RETARGET_PREVIEW_CONTROLLER",
