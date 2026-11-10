@@ -1145,7 +1145,17 @@ async def handle_render_model(arguments: Dict[str, Any]) -> Dict[str, Any]:
         renderer = GpuRenderer()
         # The current renderer owns a standalone GPU context. Forcing CPU here
         # disables that context; this renderer no longer has a PIL fallback.
-        img = renderer.render(model, camera, width, height, textures=textures)
+        try:
+            img = renderer.render(model, camera, width, height, textures=textures)
+            backend = renderer.perf.get("backend", "unknown")
+        finally:
+            # Each call built its own GL context and never released it: a long-lived
+            # MCP server (or an in-process sweep) grew by ~0.5 GB per render until the
+            # host ran out of commit (Kaigen CCQC sweep, 2026-11-02).
+            try:
+                renderer.release()
+            except Exception:
+                log.debug("ghostrigger_render_model: renderer release failed", exc_info=True)
 
         if img is None:
             return json_content({"error": "GPU renderer unavailable; no image was produced"})
@@ -1173,7 +1183,7 @@ async def handle_render_model(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "output_path": os.path.abspath(output_path),
             "width": width,
             "height": height,
-            "backend": renderer.perf.get("backend", "unknown"),
+            "backend": backend,
         })
     except FileExistsError:
         return json_content({"error": "Refusing to overwrite existing render output."})

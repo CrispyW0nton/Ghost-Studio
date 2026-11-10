@@ -215,6 +215,14 @@ class _DebugSession:
             if ok:
                 self._resource_manager = rm
                 log.info(f"DebugSession: ResourceManager initialized for {path}")
+                try:
+                    # Inherited clips (walk / run / pause1 / tlknorm live in S_Male02 / S_Female0x, not in the
+                    # body or head MDL): the engine resolves them through SuperModelResolver, which the GUI
+                    # configures with its resource manager and this headless session did not (2026-11-02).
+                    from src.core.animation.animation_engine import SuperModelResolver
+                    SuperModelResolver.configure(rm)
+                except Exception as sup_err:
+                    log.warning(f"DebugSession: SuperModelResolver configure failed: {sup_err}")
             else:
                 log.warning(f"DebugSession: ResourceManager failed to index {path}")
         except Exception as e:
@@ -479,24 +487,56 @@ class _DebugSession:
             })
         return result
 
+    def _all_animation_names(self) -> set:
+        names = set(_get_anim_names(self.model))
+        lister = getattr(self.anim_engine, "list_all_animations", None)
+        if callable(lister):
+            try:
+                for entry in lister() or []:
+                    name = entry.get("name") if isinstance(entry, dict) else getattr(entry, "name", None)
+                    if name:
+                        names.add(str(name))
+            except Exception as exc:
+                log.debug(f"DebugSession: inherited animation listing failed: {exc}")
+        return names
+
+    @staticmethod
+    def _stamp_pose(pose, anim_name, t):
+        """Stamp what the GUI's animation controller stamps on every evaluated pose.
+
+        The renderer's BAS attachment path (mesh_render_data
+        ``_bas_attachment_effective_pose_for_node``) reads ``_gr_animation_name`` and
+        ``time`` to evaluate the attached head's own clip; without them a composed
+        body + head rendered the head collapsed at the origin or not at all once an
+        animation played (Kaigen CCQC probes, 2026-11-02).
+        """
+        if pose is None:
+            return pose
+        try:
+            setattr(pose, "_gr_animation_name", str(anim_name or ""))
+            setattr(pose, "time", float(t))
+        except Exception:
+            pass
+        return pose
+
     def set_animation(self, anim_name: str) -> dict:
         if self.anim_engine is None:
             return {"ok": False, "error": "No animation engine"}
         if (
             not isinstance(anim_name, str)
             or len(anim_name) > _MAX_ANIMATION_NAME
-            or anim_name not in _get_anim_names(self.model)
+            or anim_name not in self._all_animation_names()
         ):
-            return {"ok": False, "error": "Animation is not defined on the loaded model"}
+            return {"ok": False, "error": "Animation is not defined on the loaded model or its supermodels"}
         try:
             self.anim_engine.play(anim_name, loop=False, blend=False)
             self.current_anim_name = anim_name
             self.current_anim_time = 0.0
-            self.current_pose = self.anim_engine.evaluate(0.0)
+            self.current_pose = self._stamp_pose(self.anim_engine.evaluate(0.0), anim_name, 0.0)
             # FIX-SKIN-ANIM-D2: Capture the first-frame pose as bind reference.
             # This matches the xoreos approach where the base transform is built
             # from the animation's initial frame, not the static hierarchy.
-            self.anim_base_pose = self.anim_engine.evaluate(0.0)
+            self.anim_base_pose = self._stamp_pose(self.anim_engine.evaluate(0.0), anim_name, 0.0)
             # Also update the skin uploader if available
             if self.skin_uploader is not None:
                 self.skin_uploader.set_bind_pose_from_anim(self.anim_base_pose)
@@ -510,6 +550,8 @@ class _DebugSession:
         if self.current_anim_name is None:
             return {"ok": False, "error": "No animation active"}
         anim = _get_anim_dict(self.model).get(self.current_anim_name)
+        if anim is None:
+            anim = getattr(self.anim_engine, "current_animation", None)     # inherited (supermodel) clip
         length = float(getattr(anim, "length", 0.0) or 0.0)
         if (
             isinstance(t, bool)
@@ -523,7 +565,7 @@ class _DebugSession:
         try:
             self.anim_engine.seek(t)
             self.current_anim_time = t
-            self.current_pose = self.anim_engine.evaluate(t)
+            self.current_pose = self._stamp_pose(self.anim_engine.evaluate(t), self.current_anim_name, t)
             return {
                 "ok": True,
                 "animation": self.current_anim_name,
