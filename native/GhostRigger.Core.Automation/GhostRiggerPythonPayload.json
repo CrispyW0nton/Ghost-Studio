@@ -165,7 +165,7 @@
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_DEBUG_SKINNING",
             "source_path": "src/kotormcp/tools/debug_skinning.py",
             "packaged_path": "Python/src/kotormcp/tools/debug_skinning.py",
-            "sha256": "d063f92caded3ec4aefce720dc7e09fc7df58791dce431921b1dd41789223544"
+            "sha256": "626d080847f95625e451ce565421ab5d6f4011b741a6b572571c6d7a4179bd40"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_DECOMPILE",
@@ -201,7 +201,7 @@
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_GHOSTRIGGER",
             "source_path": "src/kotormcp/tools/ghostrigger.py",
             "packaged_path": "Python/src/kotormcp/tools/ghostrigger.py",
-            "sha256": "2cd37fa256d72f063e543abd1c119d64da9eed3e38cc7139875e6597f5244d92"
+            "sha256": "65aab50545543896b91a2caf8e1afad5a9dd98305477d7cc892c1e00bf02238f"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_GHOSTRIGGER_TOOLS",
