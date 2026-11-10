@@ -618,6 +618,12 @@ class OBJExporter:
             # texture and UVs are renderable despite the _g suffix.
             if _name_is_inner_geo and not is_null_tex and uvs:
                 return False
+            # v7.3 FIX (2026-11-01, droid exports missing limbs): a textured, UV-mapped, render-on *_g trimesh is visible
+            # geometry, not a helper. Droid/creature limbs are rigid *_g meshes with real textures (c_condrdm pelvis_g,
+            # torso_g, head_g, legs; c_fordrd arms and hands); only null-texture, UV-less or render-off *_g nodes are the
+            # hidden bone proxies of the humanoid bodies (KotorBlender is_char_bone: render flag / null bitmap, not the name).
+            if not is_null_tex and uvs and getattr(node, 'render', True):
+                return False
             return True
 
         # Null-texture non-skin nodes → helpers
