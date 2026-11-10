@@ -1,5 +1,33 @@
 # Changes
 
+## 2026-11-09 - Make main the primary development branch
+
+- Owner: LordVaderCW.
+- Publish the consolidated current local source on `main` and align README installation/update commands and agent PR targets with the primary branch.
+- Retain `codex/rhen-var-optional-kit` and both UX branches because the latter contain independent unmerged work. Remove only branches whose commits are already ancestors of the published source.
+- Verification: current local tracked source matches the captured local snapshot (LF-normalized); 57 focused debug-session, level-export, native payload/hash, Unreal payload and secret-hygiene checks passed. `git diff --check` passed. No native build or visible workflow acceptance is claimed.
+- Intersects: `ghost-studio`, both publish branches, both UX branches and the previous local source-consolidation commit.
+
+## 2026-11-09 - Consolidate current local source onto main
+
+- Owner: LordVaderCW.
+- Integrate the latest local source with the October 26 published checkpoint, retaining the November 1 textured droid-mesh export fix and November 2 inherited animation, attached-head pose, and GPU context release fixes.
+- Preserve the published level-export texture/UV implementation and native project registrations; refresh IO and Automation payload hashes.
+- Verification: 63 focused debug-session, level-export, native payload/hash, Unreal payload and secret-hygiene checks passed; `git diff --check` passed. Three existing native-project assertions still fail (outdated payload count, Unreal owner inventory and host wildcard policy); their tests and relevant project/count definitions are unchanged from the October 26 checkpoint. Publication is a source checkpoint; no new native build or Visual Studio Debug UI acceptance is claimed.
+- Intersects: local `codex/publish-ghost-studio-20260805`, GitHub `ghost-studio` and `codex/publish-ghost-studio-20261026`. The independent program-wide UX work and optional Rhen Var kit remain separate.
+
+## 2026-11-01 — Export: textured `*_g` trimeshes are geometry, not helpers (droid limbs were missing)
+
+- Owner: Claude (Telos vista crowd, director request "fix the issue in ghost studio").
+- Why: `OBJExporter._is_deformation_helper` treated every non-skin node ending in `_g` / `_g0` / `_dum` as a hidden bone
+  proxy by name alone, so droid and creature limbs that are rigid `*_g` trimeshes with real textures (c_condrdm pelvis_g,
+  torso_g, head_g, legs; c_fordrd arms and hands) were dropped from FBX/GLB/OBJ exports: c_condrdm exported 110 of 1396 faces.
+- Fix (`native/GhostRigger.Core.IO/Python/src/converters/mesh_converter.py`): a `*_g` node with a non-null texture, UVs and
+  render on is renderable; null-texture, UV-less or render-off `*_g` nodes stay helpers (KotorBlender `is_char_bone` semantics).
+  Humanoid bodies are unchanged (their `*_g` proxies have null textures).
+- Verification: `scripts/export_kotor_model_for_unity.py --resref c_condrdm` now reports 21 mesh nodes / 1396 faces (was 110);
+  c_condrdm and c_fordrd GLB exports render with all limbs in Blender 5.0.
+
 ## 2026-10-26 — Publish the latest local Ghost Studio source (T3105 supporting work)
 
 - Owner: LordVaderCW.

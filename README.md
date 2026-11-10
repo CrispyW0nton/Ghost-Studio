@@ -14,7 +14,7 @@ and *The Sith Lords* modding workflows, with a strong bias toward preserving
 source game data, validating outputs, and keeping user-facing tools separated
 from reusable core systems.
 
-The active development branch is `ghost-studio`.
+The active development branch is `main`.
 
 > **Naming note:** the product is **GhostStudio** (formerly GhostRigger).
 > Internal build identifiers still carry the original name for stability —
@@ -210,7 +210,7 @@ beginner setup.
 2. Copy this entire command, paste it into PowerShell, and press Enter:
 
    ```powershell
-   git clone --branch ghost-studio --single-branch https://github.com/CrispyW0nton/Ghost-Studio.git "$env:USERPROFILE\Documents\Ghost-Studio"
+   git clone --branch main --single-branch https://github.com/CrispyW0nton/Ghost-Studio.git "$env:USERPROFILE\Documents\Ghost-Studio"
    ```
 
 3. After the download finishes, copy and run:
@@ -220,7 +220,7 @@ beginner setup.
    git branch --show-current
    ```
 
-   The last command should print `ghost-studio`.
+   The last command should print `main`.
 
 This guide calls `C:\Users\YOUR-NAME\Documents\Ghost-Studio` the
 **Ghost-Studio folder**. It is the folder containing `build.bat`,
@@ -299,8 +299,8 @@ Open PowerShell and run:
 
 ```powershell
 Set-Location "$env:USERPROFILE\Documents\Ghost-Studio"
-git switch ghost-studio
-git pull --ff-only origin ghost-studio
+git switch main
+git pull --ff-only origin main
 ```
 
 Then run `build.bat` again and repeat Step 6's **Build Solution** action. If
@@ -720,11 +720,11 @@ Start here:
 
 ## Branch And Contribution Policy
 
-- Primary development branch: `ghost-studio` (formerly `qt-ghostrigger`).
+- Primary development branch: `main` (formerly `ghost-studio` and `qt-ghostrigger`).
 - Legacy branches are historical references; do not base new feature work on
   them.
 - Commit messages should include the relevant roadmap task ID when one applies.
-- Future PRs should target `ghost-studio`.
+- Future PRs should target `main`.
 - Keep generated output, proprietary game assets, local screenshots, books, and
   dependency caches out of commits unless a tracked fixture is explicitly
   required.

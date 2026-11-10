@@ -260,9 +260,9 @@ ID when roadmap work applies:
 - `chore(cleanup): short description`
 - `test(scope): short description`
 
-The active development branch is `qt-ghostrigger`. The roadmap is
+The active development branch is `main`. The roadmap is
 `knowledge_base/roadmap/02_roadmap_2026_05.md`. Open PRs against
-`qt-ghostrigger`, never `main`.
+`main`.
 
 Before merging an upstream or long-lived branch:
 
