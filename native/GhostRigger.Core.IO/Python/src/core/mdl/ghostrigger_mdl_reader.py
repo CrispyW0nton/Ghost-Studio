@@ -317,6 +317,12 @@ class GhostRiggerNode(_iom._Node):  # type: ignore[attr-defined]
         owner = _ACTIVE_READERS.get(id(reader))
         if owner is not None:
             owner._gr_bin_nodes[offset] = self
+            if self.dangly is not None:
+                # PyKotor's delegate seeks to offset + 12 even though this
+                # reader is already based at the 12-byte MDL prefix. Let the
+                # GhostRigger reader own this array and retain the raw header.
+                self._gr_constraint_offset = self.dangly.offset_to_contraints
+                self.dangly.offset_to_contraints = 0
 
     def _sanitize_light_header(self, reader: BinaryReader) -> None:
         light = self.light
@@ -353,6 +359,23 @@ class GhostRiggerMDLBinaryReader(_iom.MDLBinaryReader):
         super().__init__(*args, **kwargs)
         self._gr_bin_nodes: Dict[int, GhostRiggerNode] = {}
         self._gr_node_order_seen: set[int] = set()
+
+    def _load_names(self, model_header) -> None:
+        # Surgical appends can place strings apart from the pointer table.
+        reader = self._reader
+        limit = _logical_reader_size(reader)
+        offset = model_header.offset_to_name_offsets
+        count = model_header.name_offsets_count
+        if count > 65535 or offset < 0 or offset + count * 4 > limit:
+            raise ValueError("Invalid MDL name pointer array")
+        reader.seek(offset)
+        pointers = [reader.read_uint32() for _ in range(count)]
+        self._names = []
+        for pointer in pointers:
+            if pointer >= limit:
+                raise ValueError("Invalid MDL name pointer")
+            reader.seek(pointer)
+            self._names.append(reader.read_terminated_string("\0", min(256, limit - pointer)))
 
     def _get_node_order(self, startnode: int) -> None:
         """Collect node order using the reader's logical MDL offset space.
@@ -417,8 +440,64 @@ class GhostRiggerMDLBinaryReader(_iom.MDLBinaryReader):
         if bin_node is not None:
             self._preserve_raw_node_flags(node, bin_node)
             self._preserve_raw_node_payload(node, bin_node)
+            self._restore_dangly_constraints(node, bin_node)
             self._fill_mdx_offset_zero_vertices(node, bin_node)
+            # BinaryReader already carries the 12-byte MDL base. PyKotor adds it a
+            # second time for dangly constraints, shifting them by three vertices.
+            # Re-read them through the same bounded logical-offset reader.
+            if bin_node.dangly is not None and node.dangly is not None:
+                from pykotor.resource.formats.mdl.mdl_data import MDLConstraint
+
+                header = bin_node.dangly
+                count = int(header.constraints_count)
+                offset = int(header.offset_to_contraints)
+                if count and _array_count_within_reader(offset, count, 4, self._reader) != count:
+                    raise ValueError("Dangly constraint array outside MDL")
+                saved = self._reader.position()
+                try:
+                    self._reader.seek(offset)
+                    constraints = []
+                    for _ in range(count):
+                        value = self._reader.read_single()
+                        if not math.isfinite(value) or not 0.0 <= value <= 255.0:
+                            raise ValueError("Invalid dangly constraint weight")
+                        constraint = MDLConstraint()
+                        constraint.type = int(value * 1000000)
+                        constraints.append(constraint)
+                    node.dangly.constraints = constraints
+                finally:
+                    self._reader.seek(saved)
         return node
+
+    def _restore_dangly_constraints(self, node, bin_node: GhostRiggerNode) -> None:
+        header = bin_node.dangly
+        if header is None:
+            return
+        header.offset_to_contraints = bin_node._gr_constraint_offset
+        count = header.constraints_count
+        if not count or node.dangly is None:
+            return
+        reader = self._reader
+        offset = header.offset_to_contraints
+        if _array_count_within_reader(offset, count, 4, reader) != count:
+            raise ValueError("Invalid MDL dangly constraint array")
+        saved_position = reader.position()
+        try:
+            reader.seek(offset)
+            weights = tuple(reader.read_single() for _ in range(count))
+        finally:
+            reader.seek(saved_position)
+        from pykotor.resource.formats.mdl.mdl_data import MDLConstraint
+
+        constraints = []
+        for weight in weights:
+            if not math.isfinite(weight):
+                raise ValueError("Non-finite MDL dangly constraint weight")
+            constraint = MDLConstraint()
+            constraint.type = int(weight * 1_000_000)
+            constraints.append(constraint)
+        node.dangly.constraints = constraints
+        node._gr_dangly_weights = weights
 
     def _load_controller(self, offset: int, data_offset: int):
         """Load a controller and preserve its original binary entry metadata."""
@@ -439,6 +518,8 @@ class GhostRiggerMDLBinaryReader(_iom.MDLBinaryReader):
             self._reader.seek(offset)
             raw = _iom._Controller().read(self._reader)  # type: ignore[attr-defined]
             metadata: Dict[str, Any] = {
+                # Absolute file offset of the first value, for in-place controller edits.
+                "binary_file_value_offset": int(getattr(self._reader, "_offset", 0)) + int(data_offset) + int(raw.data_offset) * 4,
                 "type": int(raw.type_id),
                 "unknown0": int(raw.unknown0),
                 "row_count": int(raw.row_count),

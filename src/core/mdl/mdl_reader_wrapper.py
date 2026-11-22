@@ -39,6 +39,7 @@ def read_mdl_safe(
     offset_ext: int = 0,
     size_ext: int = 0,
     file_format: "ResourceType | None" = None,
+    skip_aabb: bool = False,
 ) -> "MDL":
     """Parse MDL (+ optional MDX) through GhostRigger's owned safe reader path."""
     resolved_format = file_format or detect_mdl(source, offset)
@@ -51,6 +52,7 @@ def read_mdl_safe(
                 source_ext,
                 offset_ext,
                 size_ext,
+                skip_aabb=skip_aabb,
             ).load()
         except OSError as exc:
             if not _is_mdl_aabb_seek_oserror(exc):

@@ -307,6 +307,132 @@ class MDLBinaryWriter:
         MDLBinaryWriter().write_files(model, '/path/to/model.mdl')
     """
 
+    def append_branch_meshes_bytes(self, source_mdl, source_mdx, layer_model,
+                                   parent_offset, node_span, hide_mesh_offsets=()):
+        """Append dummy/mesh branches using Ghost's native tree serializer.
+
+        Existing source payloads stay at original offsets. This extends the
+        HAIRDONE01 leaf-only operation for bind-cancelling attachment frames.
+        """
+        roots=list(layer_model.root_node.children);ordered=[];seen=set()
+        def visit(n):
+            if id(n) in seen:raise ValueError('Repeated or cyclic append node')
+            seen.add(id(n));ordered.append(n)
+            if n.is_skin or (not n.is_mesh and n.flags!=int(NodeFlags.HEADER)):
+                raise ValueError('Only dummy and non-skin mesh branches supported')
+            if len(ordered)>512:raise ValueError('Append branch exceeds bound')
+            for c in n.children:
+                if c.parent is not n:raise ValueError('Inconsistent parent')
+                visit(c)
+        for n in roots:visit(n)
+        if not roots:raise ValueError('No append roots')
+        _,layer_mdx=self.write(layer_model)
+        names=self._read_name_table(source_mdl);folded={n.casefold() for n in names}
+        if len({n.name.casefold() for n in ordered})!=len(ordered) or any(n.name.casefold() in folded for n in ordered):
+            raise ValueError('Appended names must be new and unique')
+        source_count=len(names)
+        for i,n in enumerate(ordered):
+            self._name_idx_by_node[id(n)]=source_count+i
+            self._supernode_number_by_id[id(n)]=node_span+i
+            if id(n) in self._node_mdx:
+                off,stride=self._node_mdx[id(n)];self._node_mdx[id(n)]=(off+len(source_mdx),stride)
+        out_mdx=bytes(source_mdx)+layer_mdx
+        buf=BytesIO(bytes(source_mdl));buf.seek(0,2);_align4(buf)
+        old_names_off=struct.unpack_from('<I',source_mdl,_BASE+184)[0]
+        ptrs=list(struct.unpack_from('<'+str(source_count)+'I',source_mdl,_BASE+old_names_off))
+        for n in ordered:
+            ptrs.append(buf.tell()-_BASE);buf.write(n.name.encode('ascii')+b'\x00')
+        _align4(buf);names_rel=buf.tell()-_BASE
+        for off in ptrs:buf.write(_wu32(off))
+        root_offsets=[]
+        for n in roots:
+            # Ghost supplies headers, planes, index/child arrays, controllers,
+            # and dangly rest buffers. No independent KOTOR serializer here.
+            off=self._write_node_tree(buf,n);root_offsets.append(off)
+            end=buf.tell();buf.seek(_BASE+off+12);buf.write(_wu32(parent_offset));buf.seek(end)
+        parent_abs=_BASE+parent_offset
+        oldoff,oldn,oldn2=struct.unpack_from('<III',source_mdl,parent_abs+44)
+        if oldn!=oldn2:raise ValueError('Parent child counts differ')
+        oldchildren=list(struct.unpack_from('<'+str(oldn)+'I',source_mdl,_BASE+oldoff))
+        _align4(buf);children_rel=buf.tell()-_BASE
+        for off in oldchildren+root_offsets:buf.write(_wu32(off))
+        data=bytearray(buf.getvalue());allowed=set()
+        def patch(at,fmt,*values):
+            payload=struct.pack(fmt,*values);data[at:at+len(payload)]=payload;allowed.update(range(at,at+len(payload)))
+        patch(4,'<II',len(data)-_BASE,len(out_mdx));patch(_BASE+44,'<I',node_span+len(ordered));patch(_BASE+176,'<I',len(out_mdx));patch(_BASE+184,'<III',names_rel,source_count+len(ordered),source_count+len(ordered));patch(parent_abs+44,'<III',children_rel,oldn+len(roots),oldn+len(roots))
+        for off in hide_mesh_offsets:patch(_BASE+off+80+313,'<B',0)
+        if any(a!=b and i not in allowed for i,(a,b) in enumerate(zip(source_mdl,data))):raise AssertionError('Unexpected original MDL mutation')
+        assert out_mdx[:len(source_mdx)]==source_mdx
+        return bytes(data),out_mdx
+
+
+    def append_faces_bytes(self, source_mdl, source_mdx, node, node_offset, added_faces):
+        """Extend one existing K2 mesh with faces referencing existing vertices.
+
+        Ghost's serializer supplies native face planes and adjacency. Original
+        face records and all vertex/MDX/controller payloads remain exact.
+        Only this mesh's face/index descriptors, area, and MDL size change.
+        The current narrow operation requires one original render-index batch.
+        """
+        import copy
+        st = _BASE + int(node_offset) + 80
+        oldoff, oldn, oldn2 = struct.unpack_from('<III', source_mdl, st+8)
+        nv = struct.unpack_from('<H', source_mdl, st+304)[0]
+        if oldn != oldn2 or oldn != len(node.faces) or nv != len(node.vertices):
+            raise ValueError('Parsed source mesh does not match exact header')
+        if not added_faces or any(min(f)<0 or max(f)>=nv or len(set(f))!=3 for f in added_faces):
+            raise ValueError('New faces must use distinct existing vertex indices')
+        countoff, countn, countn2 = struct.unpack_from('<III',source_mdl,st+176)
+        offsetoff, offsetn, offsetn2 = struct.unpack_from('<III',source_mdl,st+188)
+        counteroff, countern, countern2 = struct.unpack_from('<III',source_mdl,st+200)
+        if (countn,countn2,offsetn,offsetn2,countern,countern2)!=(1,1,1,1,1,1):
+            raise ValueError('Only a source mesh with one render batch is qualified')
+        count = struct.unpack_from('<I',source_mdl,_BASE+countoff)[0]
+        indicesoff = struct.unpack_from('<I',source_mdl,_BASE+offsetoff)[0]
+        if count != oldn*3: raise ValueError('Source render count differs from faces')
+        # Produce face entries through the existing Ghost writer, not a second encoder.
+        probe = copy.copy(node); probe.faces = [tuple(map(int,f)) for f in added_faces]
+        probe.children=[];probe.parent=None;probe.flags=int(NodeFlags.HEADER|NodeFlags.MESH)
+        probe.skin_data=[];probe.mesh_indices_counts=[];probe.mesh_inverted_counters=[]
+        root=ModelNode(name='fill_probe_root',children=[probe]);probe.parent=root
+        model=KotorModel(name='fill_probe',game_version=GameVersion.K2,root_node=root)
+        encoded,_=self.write(model)
+        ps=_BASE+self._node_off[id(probe)]+80
+        pf=struct.unpack_from('<I',encoded,ps+8)[0]
+        fresh=bytearray(encoded[_BASE+pf:_BASE+pf+32*len(added_faces)])
+        for k in range(len(added_faces)):
+            for j in range(3):
+                at=32*k+20+2*j;adj=struct.unpack_from('<H',fresh,at)[0]
+                if adj!=0xffff:struct.pack_into('<H',fresh,at,adj+oldn)
+        buf=BytesIO(bytes(source_mdl));buf.seek(0,2);_align4(buf)
+        facesrel=buf.tell()-_BASE
+        buf.write(source_mdl[_BASE+oldoff:_BASE+oldoff+32*oldn]);buf.write(fresh)
+        _align4(buf);countsrel=buf.tell()-_BASE;buf.write(_wu32(3*(oldn+len(added_faces))))
+        offsetsrel=buf.tell()-_BASE;buf.write(_wu32(0))
+        countersrel=buf.tell()-_BASE;buf.write(source_mdl[_BASE+counteroff:_BASE+counteroff+4])
+        indicesrel=buf.tell()-_BASE
+        buf.write(source_mdl[_BASE+indicesoff:_BASE+indicesoff+count*2])
+        for f in added_faces:
+            for i in f:buf.write(_wu16(int(i)))
+        end=buf.tell();buf.seek(_BASE+offsetsrel);buf.write(_wu32(indicesrel));buf.seek(end)
+        data=bytearray(buf.getvalue());allowed=set()
+        def patch(at,fmt,*values):
+            payload=struct.pack(fmt,*values);data[at:at+len(payload)]=payload;allowed.update(range(at,at+len(payload)))
+        patch(4,'<I',len(data)-_BASE)
+        patch(st+8,'<III',facesrel,oldn+len(added_faces),oldn+len(added_faces))
+        patch(st+176,'<III',countsrel,1,1);patch(st+188,'<III',offsetsrel,1,1);patch(st+200,'<III',countersrel,1,1)
+        added_area=0.0
+        for a,b,c in added_faces:
+            va,vb,vc=node.vertices[a],node.vertices[b],node.vertices[c]
+            u=[vb[j]-va[j] for j in range(3)];v=[vc[j]-va[j] for j in range(3)]
+            w=(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])
+            added_area+=0.5*sum(x*x for x in w)**0.5
+        patch(st+324,'<f',struct.unpack_from('<f',source_mdl,st+324)[0]+added_area)
+        if any(a!=b and k not in allowed for k,(a,b) in enumerate(zip(source_mdl,data))):
+            raise AssertionError('Unexpected original MDL byte change')
+        return bytes(data),bytes(source_mdx)
+
+
     def write_files(self, model: KotorModel, mdl_path: str) -> None:
         """Write MDL and MDX files to disk (MDX path derived from mdl_path)."""
         mdl_bytes, mdx_bytes = self.write(model)
@@ -528,7 +654,9 @@ class MDLBinaryWriter:
                     queue.append(int(child_rel))
         return result
 
-    def write(self, model: KotorModel) -> Tuple[bytes, bytes]:
+    def write(
+        self, model: KotorModel, *, original_skin_node_names: tuple[str, ...] = (),
+    ) -> Tuple[bytes, bytes]:
         """
         Returns (mdl_bytes, mdx_bytes).
 
@@ -568,6 +696,12 @@ class MDLBinaryWriter:
         self._preserve_native_supernode_numbers = bool(
             getattr(model, "preserve_native_supernode_numbers", False)
         )
+        # Authoring operations may insert or reorder geometry after loading
+        # node-indexed skin tables. Preserve each original bind entry by name.
+        skin_names = tuple(name.casefold() for name in original_skin_node_names)
+        if len(set(skin_names)) != len(skin_names):
+            raise ValueError("Original skin geometry names must be unique")
+        self._original_skin_nodes = {name: i for i, name in enumerate(skin_names)}
         self._supernode_number_by_name: Dict[str, int] = {}
         self._supernode_number_by_id: Dict[int, int] = {}
         used_supernode_numbers: Dict[int, str] = {}
@@ -2162,10 +2296,28 @@ class MDLBinaryWriter:
         def _is_node_indexed(arr: list) -> bool:
             # Node-indexed pass-through only when the array spans the whole
             # node table AND that length is distinguishable from the palette.
+            if bool(getattr(self._model, "preserve_node_indexed_bind_arrays", False)):
+                # Explicit same-topology binary-alias route: retail mainmenu01
+                # has 92 geometry nodes but authoritative 91-entry bind arrays.
+                # Do not reinterpret those arrays as palette-indexed data.
+                if not self._preserve_native_supernode_numbers:
+                    raise ValueError("Bind pass-through requires preserved native node identities")
+                return (bool(arr) and len(bone_map_names) < len(arr) <= n_nodes
+                        and all(0 <= nid < len(arr) for nid in palette_node_ids))
             return bool(arr) and len(arr) == n_nodes and n_nodes != len(bone_map_names)
 
+        def _reindex_original(arr: list, fallback):
+            source = self._original_skin_nodes
+            if not source or len(arr) != len(source) or len(arr) == len(bone_map_names):
+                return None
+            return [arr[source[name]] if name in source else fallback
+                    for item in self._nodes for name in (item.name.casefold(),)]
+
         raw_bm_floats = list(getattr(node, 'bone_map_floats', []) or [])
-        if _is_node_indexed(raw_bm_floats):
+        remapped_bm = _reindex_original(raw_bm_floats, -1.0)
+        if remapped_bm is not None:
+            bonemap_floats = remapped_bm
+        elif _is_node_indexed(raw_bm_floats):
             bonemap_floats = [float(v) for v in raw_bm_floats]
         else:
             bonemap_floats = [-1.0] * n_nodes
@@ -2176,6 +2328,9 @@ class MDLBinaryWriter:
 
         def _expand_bind(entries: list, filler: tuple) -> list:
             """Return a node-indexed bind array (qbones/tbones)."""
+            remapped = _reindex_original(entries, filler)
+            if remapped is not None:
+                return [tuple(entry) for entry in remapped]
             if _is_node_indexed(entries):
                 return [tuple(e) for e in entries]
             out = [filler] * n_nodes

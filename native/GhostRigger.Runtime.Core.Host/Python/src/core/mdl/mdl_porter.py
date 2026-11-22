@@ -112,9 +112,11 @@ class CrossGamePorter:
 
     def __init__(self,
                  texture_map:     Optional[Dict[str,str]] = None,
-                 remap_supermodel: bool = True):
+                 remap_supermodel: bool = True,
+                 remap_textures: bool = True):
         self.texture_map      = texture_map or {}
         self.remap_supermodel = remap_supermodel
+        self.remap_textures = remap_textures
 
     # ── Public API ──────────────────────────────────────────────────────────
 
@@ -126,6 +128,8 @@ class CrossGamePorter:
         import copy
         from ..geometry.model_data import GameVersion
 
+        if target_game.upper() not in ('K1', 'K2'):
+            raise ValueError('target_game must be K1 or K2')
         target_v = GameVersion.K2 if target_game.upper() == 'K2' else GameVersion.K1
         if model.game_version == target_v:
             log.info(f"CrossGamePorter: model already {target_game}, cloning as-is")
@@ -151,7 +155,9 @@ class CrossGamePorter:
 
         # Remap textures in animations (some animations reference texture controllers)
         for anim in ported.animations:
-            anim.game_version = target_v  # some parsers set this
+            anim.game_version = target_v
+            for node in (getattr(anim, "nodes", None) or []):
+                self._walk_nodes(node, target_v)
 
         return ported
 
@@ -187,7 +193,7 @@ class CrossGamePorter:
         node.game_version = target_v
 
         # Remap texture names
-        for attr in ('texture', 'lightmap'):
+        for attr in (('texture', 'lightmap') if self.remap_textures else ()):
             tex = getattr(node, attr, '') or ''
             if tex:
                 # User-supplied map takes priority, then built-in table
@@ -247,7 +253,7 @@ class MDLBinaryWriter:
         log.info(f"MDLBinaryWriter: writing {'K2' if is_k2 else 'K1'} "
                  f"model {model.name!r} → {mdl_path}")
 
-        mdl_data, mdx_data = self._build(model, is_k2)
+        mdl_data, mdx_data = self.build(model)
 
         Path(mdl_path).write_bytes(mdl_data)
         if mdx_data:
@@ -259,13 +265,19 @@ class MDLBinaryWriter:
         Public convenience wrapper: build binary MDL+MDX bytes without writing to disk.
         Returns (mdl_bytes, mdx_bytes).
         """
-        from ..geometry.model_data import GameVersion
-        is_k2 = (model.game_version == GameVersion.K2)
-        return self._build(model, is_k2)
+        # Use the maintained Ghost Studio writer. The legacy private
+        # _build below omits extension payloads and mesh vtable pairs.
+        from .mdl_writer import MDLBinaryWriter as MaintainedBinaryWriter
+        return MaintainedBinaryWriter().build(model)
 
     # ── Build ──────────────────────────────────────────────────────────────
 
     def _build(self, model, is_k2: bool) -> Tuple[bytes, bytes]:
+        # K1HEADS01: the legacy layout below omits SKIN/DANGLY subheaders.
+        # Use the canonical Ghost Studio writer, which preserves those payloads.
+        from .mdl_writer import MDLBinaryWriter as CanonicalMDLBinaryWriter
+        return CanonicalMDLBinaryWriter().write(model)
+
         from ..geometry.model_data import NodeFlags, GameVersion
 
         fp1 = FP1_K2 if is_k2 else FP1_K1
@@ -1201,96 +1213,68 @@ class MDLBinaryWriter:
         root_name = getattr(anim_nodes[0], 'name', '') if anim_nodes else (anim.anim_root or "")
         nm2 = (anim.anim_root or root_name or "").encode('ascii', 'replace')[:32].ljust(32, b'\x00')
         anim_hdr[8:40] = nm2
-        # events array (not serialized — write zero count/offset)
-        # +40: events_off, +44: events_cnt, +48: events_cnt2
-        struct.pack_into('<III', anim_hdr, 40, 0, 0, 0)
-
-        return bytes(geo) + bytes(anim_hdr) + anim_node_data
+        events = getattr(anim, "events", ()) or ()
+        event_data = bytearray()
+        for event in events:
+            name = event.name.encode("ascii")
+            if len(name) > 32:
+                raise ValueError(f"Animation event name exceeds 32 bytes: {event.name!r}")
+            event_data.extend(struct.pack("<f32s", event.time, name))
+        event_offset = node_block_start_rel + len(anim_node_data) if events else 0
+        struct.pack_into("<III", anim_hdr, 40, event_offset, len(events), len(events))
+        return bytes(geo) + bytes(anim_hdr) + anim_node_data + bytes(event_data)
 
     def _animation_nodes_with_hierarchy(self, anim, all_nodes: list) -> list:
-        """Return animation nodes as a full target model-hierarchy tree.
+        """Overlay keyed tracks on geometry cloned in the name-table's DFS order.
 
-        The workbench may create sparse animation-node lists because in-memory
-        playback resolves poses by node name. Binary MDL stores animation nodes
-        as a tree, and the original engine walks that tree directly. Preserve
-        the target Aurora hierarchy shape and overlay controllers from
-        ``anim.nodes`` onto matching cloned target nodes by name.
+        Retail geometry may reuse a mesh name on different limbs. Flat retarget
+        tracks still resolve by unique name; repeated names need their ancestry.
         """
-        source_nodes = list(getattr(anim, 'nodes', None) or [])
+        def key(node):
+            return str(getattr(node, "name", "") or "").lower()
+
+        def address(node):
+            parts = []
+            while node is not None:
+                parent = getattr(node, "parent", None)
+                ordinal = 0
+                if parent is not None:
+                    for sibling in parent.children:
+                        if sibling is node:
+                            break
+                        if key(sibling) == key(node):
+                            ordinal += 1
+                parts.append((key(node), ordinal))
+                node = parent
+            return tuple(reversed(parts))
+
         if not all_nodes:
             return []
-
-        order_by_name = {
-            str(getattr(node, 'name', '') or '').lower(): index
-            for index, node in enumerate(all_nodes or [])
-            if getattr(node, 'name', '')
-        }
-
-        def clone_stub_node(node):
-            if hasattr(node, 'clone_shallow'):
-                cloned = node.clone_shallow()
-            else:
-                cloned = copy.copy(node)
-            cloned.children = []
-            cloned.parent = None
-            cloned.controllers = []
-            return cloned
-
-        controller_by_name: Dict[str, list] = {}
-        for node in source_nodes:
-            key = str(getattr(node, 'name', '') or '').lower()
-            if key:
-                controller_by_name[key] = list(getattr(node, 'controllers', []) or [])
-
-        local_by_source_id: Dict[int, object] = {}
-        for geom in all_nodes:
-            clone = clone_stub_node(geom)
-            key = str(getattr(geom, 'name', '') or '').lower()
-            clone.controllers = list(controller_by_name.get(key, []))
-            local_by_source_id[id(geom)] = clone
-
-        roots = []
-        for geom in all_nodes:
-            node = local_by_source_id[id(geom)]
-            parent = getattr(geom, 'parent', None)
-            parent_node = local_by_source_id.get(id(parent)) if parent is not None else None
-            if parent_node is not None and parent_node is not node:
-                node.parent = parent_node
-                parent_node.children.append(node)
-            else:
-                roots.append(node)
-
-        root_node = min(
-            roots,
-            key=lambda node: order_by_name.get(str(getattr(node, 'name', '') or '').lower(), 1_000_000),
-        ) if roots else None
-
-        ordered = []
-        seen = set()
-
-        def visit(node):
-            nid = id(node)
-            if nid in seen:
-                return
-            seen.add(nid)
-            ordered.append(node)
-            node.children.sort(
-                key=lambda child: order_by_name.get(
-                    str(getattr(child, 'name', '') or '').lower(),
-                    1_000_000,
-                )
-            )
-            for child in node.children:
-                visit(child)
-
-        if root_node is not None:
-            visit(root_node)
-        for node in sorted(
-            local_by_source_id.values(),
-            key=lambda item: order_by_name.get(str(getattr(item, 'name', '') or '').lower(), 1_000_000),
-        ):
-            visit(node)
-        return ordered
+        clones = {}
+        by_name = {}
+        by_path = {}
+        for target in all_nodes:
+            clone = target.clone_shallow() if hasattr(target, "clone_shallow") else copy.copy(target)
+            clone.children = []
+            clone.parent = None
+            clone.controllers = []
+            clones[id(target)] = clone
+            by_name.setdefault(key(target), []).append(clone)
+            by_path[address(target)] = clone
+        for target in all_nodes:
+            clone = clones[id(target)]
+            clone.parent = clones.get(id(target.parent))
+            clone.children = [clones[id(child)] for child in target.children]
+        for track in getattr(anim, "nodes", ()) or ():
+            matches = by_name.get(key(track), [])
+            if not matches:
+                continue
+            match = matches[0] if len(matches) == 1 else by_path.get(address(track))
+            if match is None and getattr(track, "controllers", None):
+                raise ValueError(f"Ambiguous animation track {track.name!r} in {anim.name!r}")
+            if match is not None:
+                match.controllers = list(getattr(track, "controllers", ()) or ())
+        return [clones[id(target)] for target in all_nodes]
 
     @staticmethod
     def _validate_animation_export_tree(anim, anim_nodes: list, target_nodes: list) -> None:

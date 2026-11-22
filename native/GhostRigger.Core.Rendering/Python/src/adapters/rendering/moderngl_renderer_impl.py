@@ -569,6 +569,9 @@ class GpuRenderer:
         self.grid_y_axis_color: tuple[float, float, float] = (62 / 255.0, 112 / 255.0, 68 / 255.0)
         self._wireframe_pass: bool = False
         self.show_grid: bool = True
+        # Authored skin and rigid parts can share one atlas; use the MDL's
+        # render flags directly when the caller knows these are visible parts.
+        self.hide_inferred_skin_proxies: bool = True
         self.cull_faces: bool = True
         self.enable_frustum_culling: bool = True
         self.max_new_mesh_uploads_per_frame: int = 64
@@ -2462,7 +2465,7 @@ class GpuRenderer:
                             continue
                     except Exception:
                         pass
-                    if id(node) in _proxy_node_ids:
+                    if self.hide_inferred_skin_proxies and id(node) in _proxy_node_ids:
                         continue
                     na, tb, is_trans, has_env = _classify_node(node, anim_pose)
                     if is_trans:
