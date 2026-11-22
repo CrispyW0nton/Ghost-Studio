@@ -292,6 +292,9 @@ desktop, right-click it and choose **Send to → Desktop (create shortcut)**.
 Ghost-Studio does not silently overwrite the original KOTOR installation.
 Writing or installing mod output requires an explicit export/install action.
 
+Making mods for Kotor Academy: Expanded Galaxy (KJA)? Read
+[KJA modders: start here](docs/KJA_MODDERS_START_HERE.md) first.
+
 ### Updating Ghost-Studio later
 
 You do not need to reinstall Git, Visual Studio, or Python for each update.
@@ -731,7 +734,8 @@ Start here:
 
 ## License And Legal
 
-See [LICENSE](LICENSE).
+Ghost-Studio is MIT licensed: see [LICENSE](LICENSE). [NOTICE](NOTICE) lists the
+trademark notice and the one LGPL-3.0-or-later file (a patch to PyKotor).
 
 Ghost-Studio does not bundle KOTOR game assets or Autodesk FBX SDK binaries.
 Users are responsible for using legal local game installs and third-party SDKs

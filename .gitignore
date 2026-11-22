@@ -468,6 +468,7 @@ knowledge_base/test_artifacts/*.zip
 !/docs/UNREAL_LEVEL_IMPORT.md
 !/docs/UNREAL_TO_KOTOR_WORKFLOW_PLAN.md
 !/docs/UNREAL_PIPELINE_IMPLEMENTATION.md
+!/docs/KJA_MODDERS_START_HERE.md
 !/docs/knowledgebase/
 !/docs/knowledgebase/*.md
 !/docs/knowledgebase/skills.md

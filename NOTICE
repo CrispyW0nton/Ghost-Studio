@@ -1,0 +1,21 @@
+Ghost-Studio notices
+====================
+
+Trademarks
+----------
+Star Wars: Knights of the Old Republic and The Sith Lords are trademarks of
+LucasArts / Lucasfilm / Disney. This software is a fan-made modding utility
+and is not affiliated with or endorsed by LucasArts, Lucasfilm, Aspyr Media,
+or Obsidian Entertainment. Game data files are not included in this repository.
+
+Third-party code
+----------------
+Ghost-Studio is MIT licensed (see LICENSE), except as noted here.
+
+* src/core/scripting/pykotor_ncs_compiler_2_3_1_diff.py and its payload copy
+  native/GhostRigger.Core.Workflow/Python/src/core/scripting/pykotor_ncs_compiler_2_3_1_diff.py
+  contain a unified diff against PyKotor 2.3.1
+  (https://github.com/OldRepublicDevs/PyKotor), which is licensed under the
+  GNU Lesser General Public License v3.0 or later. These two files are
+  distributed under LGPL-3.0-or-later. PyKotor itself is installed from PyPI and
+  is not included in this repository.
