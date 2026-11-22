@@ -135,7 +135,7 @@ def build_unreal_level_project(bundle: dict[str, Any], *, independent_components
                 # Odyssey area triangles are culled: explicitly bake the second
                 # side, with separate reversed normals, only when requested.
                 count = len(vertices)
-                if count * 2 > 65535:
+                if count * 2 > 32767:
                     raise ValueError("Two-sided surface exceeds the MDL u16 vertex limit.")
                 vertices = np.r_[vertices, vertices]
                 normals = np.r_[normals, -normals]

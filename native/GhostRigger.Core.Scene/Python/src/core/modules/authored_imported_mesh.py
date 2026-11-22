@@ -485,8 +485,10 @@ def imported_mesh_surface_index_for_role(primitive: ImportedMeshRoomPrimitive, r
 # Validation + compile
 
 
-#: MDL mesh nodes index vertices with u16 values; a surface past this cannot export.
-MDL_MAX_VERTICES_PER_SURFACE = 65535
+#: MDL mesh nodes index vertices with 16-bit values and swkotor2.exe has signed consumers: past 32,767 exported
+#: vertices a render node is a crash hazard although the file could hold 65,535 (Dathomir TE01, 2026-11-17).
+#: imported_mesh_partition.split_oversized_imported_mesh_surfaces does the split.
+MDL_MAX_VERTICES_PER_SURFACE = 32767
 #: Vanilla KOTOR rooms run low thousands of triangles; warn well before the
 #: engine starts struggling with area geometry.
 ROOM_TRIANGLE_WARNING_BUDGET = 15000
@@ -521,7 +523,7 @@ def validate_imported_mesh_room_primitive(primitive: ImportedMeshRoomPrimitive) 
         if vertex_count > MDL_MAX_VERTICES_PER_SURFACE:
             blocking.append(
                 f"Imported room {primitive.room_resref} surface {role} has {vertex_count} vertices,"
-                f" past the MDL u16 index limit ({MDL_MAX_VERTICES_PER_SURFACE}); split the surface."
+                f" past the MDL u16 index limit ({MDL_MAX_VERTICES_PER_SURFACE}); split the surface (imported_mesh_partition)."
             )
         for face in surface.faces:
             if min(face) < 0 or max(face) >= vertex_count:
@@ -6331,7 +6333,7 @@ def boolean_difference_imported_mesh_surfaces(
     cutter_mesh_role: str,
     *,
     weld_tolerance: float = 1.0e-6,
-    max_output_triangles: int = MDL_MAX_VERTICES_PER_SURFACE,
+    max_output_triangles: int = 65535,
 ) -> ImportedMeshRoomPrimitive:
     """Replace two closed imported surfaces with their deterministic A-B result.
 

@@ -36,7 +36,7 @@ def _matrix(value) -> np.ndarray:
 
 def _geometry(mesh: dict, matrix: np.ndarray):
     vertices = _array(mesh.get("vertices"), 3, "vertices")
-    if len(vertices) > 65535:
+    if len(vertices) > 32767:
         raise ValueError("Surface exceeds the MDL u16 vertex limit; split during conditioning.")
     faces = _faces(mesh.get("triangles"), len(vertices))
     vertices = (np.c_[vertices, np.ones(len(vertices))] @ matrix.T)[:, :3]
