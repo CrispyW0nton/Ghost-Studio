@@ -693,6 +693,10 @@ class ModelNode:
     uvs_3:        List[Tuple[float,float]]       = field(default_factory=list)
     faces:        List[Tuple[int,int,int]]       = field(default_factory=list)
     face_mats:    List[int]                      = field(default_factory=list)
+    # face_surface_mats: the raw MDL face material values as read. For AABB
+    # (walkmesh) nodes these are surfacemat.2da rows that the engine's camera
+    # and movement hit-checks use; face_mats above is clamped to texture slots.
+    face_surface_mats: List[int]                   = field(default_factory=list)
     # face_uvs: per-face tvert (texture-vertex) index triples.
     # Used by ASCII MDL parser where tvert indices differ from vertex indices.
     # When empty (binary MDL or single-index ASCII), uvs[] is accessed directly

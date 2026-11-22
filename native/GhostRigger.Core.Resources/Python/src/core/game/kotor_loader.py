@@ -1226,6 +1226,7 @@ def _read_mesh(mesh, gr: ModelNode) -> None:
     gr.faces     = []
     gr.face_uvs  = []
     gr.face_mats = []
+    gr.face_surface_mats = []
     _face_iter = mesh.faces or []
     for f in _face_iter:
         v1, v2, v3 = int(f.v1), int(f.v2), int(f.v3)
@@ -1240,7 +1241,8 @@ def _read_mesh(mesh, gr: ModelNode) -> None:
         # (tex_count).  We clamp to [0, tex_count-1] so that face_mats are
         # always valid indices into texture_names, preserving the invariant
         # face_mats[i] in [0, tex_count-1] (and len(texture_names)==tex_count).
-        mat_raw = int(getattr(f, 'material', 0) or 0) & 0x1F
+        gr.face_surface_mats.append(int(getattr(f, 'material', 0) or 0))
+        mat_raw = gr.face_surface_mats[-1] & 0x1F
         mat = min(mat_raw, max(0, gr.tex_count - 1))
         gr.face_mats.append(mat)
 

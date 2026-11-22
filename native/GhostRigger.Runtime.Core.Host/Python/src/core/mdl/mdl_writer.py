@@ -296,6 +296,10 @@ class _NodeInfo:
 
 # ─────────────────────────────  Main writer  ─────────────────────────────────
 
+#: KOTOR I/II mesh nodes index vertices with signed 16-bit values.
+MDL_MAX_VERTICES_PER_NODE = 32767
+
+
 class MDLBinaryWriter:
     """
     Serialise a KotorModel to binary MDL + MDX bytes.
@@ -1809,6 +1813,13 @@ class MDLBinaryWriter:
 
         vert_cnt  = len(node.vertices)
         face_cnt  = len(node.faces)
+        if vert_cnt > MDL_MAX_VERTICES_PER_NODE:
+            # The engine stores a mesh node's vertex count and face indices as
+            # signed 16-bit values; a larger node faults the model build in game.
+            raise ValueError(
+                f"Mesh node {getattr(node, 'name', '?')!r} has {vert_cnt} vertices; KOTOR allows "
+                f"at most {MDL_MAX_VERTICES_PER_NODE} per node. Split the mesh before export."
+            )
         raw_tex_name = str(node.texture or '')
         raw_lm_name = str(node.lightmap or '')
         tex_name = 'NULL' if raw_tex_name.strip().lower() == 'null' else raw_tex_name.lower()
@@ -2049,8 +2060,16 @@ class MDLBinaryWriter:
         for i, (a, b, c) in enumerate(node.faces):
             for e0, e1 in ((a, b), (b, c), (c, a)):
                 edge_map.setdefault((min(e0, e1), max(e0, e1)), []).append(i)
+        # AABB nodes are the model's walkmesh copy: the engine's camera and
+        # movement hit-checks read surfacemat.2da rows from these face materials,
+        # so write the values that were read rather than texture-clamped slots.
+        surface_mats = list(getattr(node, 'face_surface_mats', None) or ())
+        use_surface_mats = bool(node.flags & NodeFlags.AABB) and len(surface_mats) == len(node.faces)
         for i, (v1, v2, v3) in enumerate(node.faces):
-            mat = node.face_mats[i] if i < len(node.face_mats) else 0
+            if use_surface_mats:
+                mat = surface_mats[i]
+            else:
+                mat = node.face_mats[i] if i < len(node.face_mats) else 0
             try:
                 ax, ay, az = node.vertices[v1]
                 bx, by, bz = node.vertices[v2]
