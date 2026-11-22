@@ -294,6 +294,8 @@ Writing or installing mod output requires an explicit export/install action.
 
 Making mods for Kotor Academy: Expanded Galaxy (KJA)? Read
 [KJA modders: start here](docs/KJA_MODDERS_START_HERE.md) first.
+To let an AI agent drive Ghost-Studio's tools over MCP, see
+[Connect your AI agent](docs/KJA_MODDERS_START_HERE.md#5-connect-your-ai-agent).
 
 ### Updating Ghost-Studio later
 

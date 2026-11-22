@@ -50,7 +50,50 @@ installation unless you choose an explicit export or install action.
 - **Test in the game.** The editor preview is not the game. Look at your mod in
   KJA before you release it.
 
-## 5. Get help
+## 5. Connect your AI agent
+
+Ghost-Studio ships an MCP server, KotorMCP, so an AI agent (Claude Code, Claude
+Desktop, Codex, Cursor or any other MCP client) can work its tools with you. It
+covers reading game resources and models, 2DA/GFF work, script compile and
+decompile, model render and export, level export and more (about 100 tools).
+
+Add it to your client's MCP configuration. For JSON-configured clients (Claude
+Desktop, a Claude Code `.mcp.json`, Cursor):
+
+```json
+{
+  "mcpServers": {
+    "ghost-studio": {
+      "command": "python",
+      "args": ["C:/path/to/Ghost-Studio/scripts/mcp/start_kotormcp_stdio.py"],
+      "env": {
+        "K2_PATH": "C:/Program Files (x86)/Steam/steamapps/common/Knights of the Old Republic II"
+      }
+    }
+  }
+}
+```
+
+For Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.ghost-studio]
+command = "python"
+args = ["C:/path/to/Ghost-Studio/scripts/mcp/start_kotormcp_stdio.py"]
+env = { K2_PATH = "C:/Program Files (x86)/Steam/steamapps/common/Knights of the Old Republic II" }
+```
+
+Use the same Python you installed Ghost-Studio's requirements into (they include
+the `mcp` package). Set `K1_PATH` as well if you want KOTOR 1 data.
+
+Keep your agent on a leash. A few tools act on the real game: installing or
+restoring Override files, the DirectInput hook, and sending clicks and keys to a
+running game. `kotor_engine_script` runs arbitrary Python against the game
+binary through Ghidra. Point `K2_PATH` at a copy of the game while you
+experiment, and approve those calls yourself instead of letting them run
+unattended.
+
+## 6. Get help
 
 Ask in `#ghost-studio-help` on the KJA Discord, share your work in
 `#ghost-studio-showcase`, and post feature requests or bugs in
