@@ -111,6 +111,7 @@ PYTHON_PAYLOAD_CORE_RENDERING_GPU_SCENE_HELPERS RCDATA "Python/src/core/renderin
 PYTHON_PAYLOAD_CORE_RENDERING_GPU_SHADERS RCDATA "Python/src/core/rendering/gpu_shaders.py"
 PYTHON_PAYLOAD_CORE_RENDERING_GPU_VBO_LAYOUT RCDATA "Python/src/core/rendering/gpu_vbo_layout.py"
 PYTHON_PAYLOAD_CORE_RENDERING_HARDWARE_INFO RCDATA "Python/src/core/rendering/hardware_info.py"
+PYTHON_PAYLOAD_CORE_RENDERING_KOTOR_GUI_FONT RCDATA "Python/src/core/rendering/kotor_gui_font.py"
 PYTHON_PAYLOAD_CORE_RENDERING_KOTOR_GUI_PREVIEW RCDATA "Python/src/core/rendering/kotor_gui_preview.py"
 PYTHON_PAYLOAD_CORE_RENDERING_MESH_RENDER_DATA RCDATA "Python/src/core/rendering/mesh_render_data.py"
 PYTHON_PAYLOAD_CORE_RENDERING_PICKING RCDATA "Python/src/core/rendering/picking.py"

@@ -16,6 +16,7 @@ PYTHON_PAYLOAD_CORE_RESOURCES_INIT RCDATA "Python/src/core/resources/__init__.py
 PYTHON_PAYLOAD_CORE_RESOURCES_GAME_RESOURCE_PROVIDER RCDATA "Python/src/core/resources/game_resource_provider.py"
 PYTHON_PAYLOAD_CORE_RESOURCES_HEAD_DONOR_CATALOG RCDATA "Python/src/core/resources/head_donor_catalog.py"
 PYTHON_PAYLOAD_CORE_RESOURCES_HEAD_GAME_INSTALL RCDATA "Python/src/core/resources/head_game_install.py"
+PYTHON_PAYLOAD_CORE_RESOURCES_KOTOR_AUDIO_PAYLOAD RCDATA "Python/src/core/resources/kotor_audio_payload.py"
 PYTHON_PAYLOAD_CORE_RESOURCES_PLACEABLE_LIBRARY RCDATA "Python/src/core/resources/placeable_library.py"
 PYTHON_PAYLOAD_RESOURCES_INIT RCDATA "Python/src/resources/__init__.py"
 PYTHON_PAYLOAD_RESOURCES_GAME_DETECTOR RCDATA "Python/src/resources/game_detector.py"

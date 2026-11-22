@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Workflow",
-    "file_count": 157,
+    "file_count": 160,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -825,7 +825,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_DATA_AUTHORING",
             "source_path": "src/core/scripting/data_authoring.py",
             "packaged_path": "Python/src/core/scripting/data_authoring.py",
-            "sha256": "02f07e100418af89f9e0d829aa083211422ecc23bb93373a1abf7808110f291a"
+            "sha256": "179ec77651f33228dc807f02d30ba8b0b1966c2cae076d6565a4bdce62353e35"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_DIALOGUE_CONTRACT",
@@ -840,16 +840,34 @@
             "sha256": "628f06dda2cff3529d3bc8959920e2b7c906d60ff32734aa6a539296c956d4b5"
         },
         {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_NCS_GAME_ABI",
+            "source_path": "src/core/scripting/ncs_game_abi.py",
+            "packaged_path": "Python/src/core/scripting/ncs_game_abi.py",
+            "sha256": "a50ce6559b9a69b156d3674db95cf7f155bcfb8ae78e08f9cfab055c9e7334d5"
+        },
+        {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_PACKAGING",
             "source_path": "src/core/scripting/packaging.py",
             "packaged_path": "Python/src/core/scripting/packaging.py",
-            "sha256": "637392e594d8c9f3df18474d605c6bb8e473d66be109a055db6604dc7b7736c1"
+            "sha256": "c81a8da59740e08d82255ee45e3a35a5ff05d1a16f80ff63fa4564ba820cdd8d"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_PROJECT",
             "source_path": "src/core/scripting/project.py",
             "packaged_path": "Python/src/core/scripting/project.py",
             "sha256": "b02888c86ec6be42242a7803d144a5778ea78ec7c465d8937a65aa820ee30127"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_PYKOTOR_NCS_COMPILER_2_3_1_DIFF",
+            "source_path": "src/core/scripting/pykotor_ncs_compiler_2_3_1_diff.py",
+            "packaged_path": "Python/src/core/scripting/pykotor_ncs_compiler_2_3_1_diff.py",
+            "sha256": "7292fc4c2a7a2f8b4e75f28d7f192ce93d3126ba1e0c65ebf9f044278c92f514"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_PYKOTOR_NCS_COMPILER_FIX",
+            "source_path": "src/core/scripting/pykotor_ncs_compiler_fix.py",
+            "packaged_path": "Python/src/core/scripting/pykotor_ncs_compiler_fix.py",
+            "sha256": "48a262c298727c0ee327ae8fd4a8431dea702abe178e414b75c0b3f11b4a96e4"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_QUEST",
@@ -861,13 +879,13 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_REFERENCE",
             "source_path": "src/core/scripting/reference.py",
             "packaged_path": "Python/src/core/scripting/reference.py",
-            "sha256": "a06416823871b4dcdc31285270e158c9185937d22f2ba6374be765976197a297"
+            "sha256": "302552f107782e7fbb7a6963fa803229236763e4eec7832f0fed35d6682d9fdd"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SCRIPTING_STUDIO",
             "source_path": "src/core/scripting/studio.py",
             "packaged_path": "Python/src/core/scripting/studio.py",
-            "sha256": "61bb89f7ca04ef1cc9cf88d171e862694d469667417ed16c81e89b0390d21e27"
+            "sha256": "87279561cadea9637405e9bcdae6e0ffb2ecddd4754669c0cab75fed03d5b3e5"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_SECONDARY_MOTION_INIT",
@@ -933,7 +951,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_PLCAA_MANUAL_PROOF_KIT",
             "source_path": "src/core/workflow/plcaa_manual_proof_kit.py",
             "packaged_path": "Python/src/core/workflow/plcaa_manual_proof_kit.py",
-            "sha256": "4ac7f128be2d7b7b429fde687c8c96a97ad7bdbeaba786eb6801f6e3738db5b2"
+            "sha256": "bed74d13ac7eb20f89be874ec74136257d6f0cd6d0a2f062f6e917698fdca3aa"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_WORKFLOW_UNREAL_MAP_IMPORT",

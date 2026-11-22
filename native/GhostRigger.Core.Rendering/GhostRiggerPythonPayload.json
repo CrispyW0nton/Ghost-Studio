@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Rendering",
-    "file_count": 135,
+    "file_count": 136,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -99,7 +99,7 @@
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_MODERNGL_RENDERER_IMPL",
             "source_path": "src/adapters/rendering/moderngl_renderer_impl.py",
             "packaged_path": "Python/src/adapters/rendering/moderngl_renderer_impl.py",
-            "sha256": "b79c178e522b2eec0e057303b10a4dcb8728589b4753a1b69dc0cf9f287ffb53"
+            "sha256": "7bfe66dc84ceff17fbb3daa85f29bfc44a866106a3469bca071fd97a68c0a0b6"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_ADAPTERS_RENDERING_MODERNGL_RESOURCES",
@@ -670,6 +670,12 @@
             "source_path": "src/core/rendering/hardware_info.py",
             "packaged_path": "Python/src/core/rendering/hardware_info.py",
             "sha256": "d822e4c1cb8c264ce5e8f83040805ac7ccead454be87d2de6956ce8d4851c10a"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_KOTOR_GUI_FONT",
+            "source_path": "src/core/rendering/kotor_gui_font.py",
+            "packaged_path": "Python/src/core/rendering/kotor_gui_font.py",
+            "sha256": "be236ddcd3527e90063acf893713878679b1ff9b5e6889b8aa0b970ee341e4fc"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RENDERING_KOTOR_GUI_PREVIEW",

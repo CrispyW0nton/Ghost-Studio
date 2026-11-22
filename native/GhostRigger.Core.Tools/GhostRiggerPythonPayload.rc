@@ -123,6 +123,7 @@ PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_WALKMESH_STATUS RCDATA "Python/src/core/mod
 PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_WALKMESH_SURFACES RCDATA "Python/src/core/modules/authored_walkmesh_surfaces.py"
 PYTHON_PAYLOAD_CORE_MODULES_CUSTOM_MODULE_PACKAGER RCDATA "Python/src/core/modules/custom_module_packager.py"
 PYTHON_PAYLOAD_CORE_MODULES_DEV_MODULE_SMOKE RCDATA "Python/src/core/modules/dev_module_smoke.py"
+PYTHON_PAYLOAD_CORE_MODULES_IMPORTED_MESH_PARTITION RCDATA "Python/src/core/modules/imported_mesh_partition.py"
 PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_BASE_GAME_CONTRACT RCDATA "Python/src/core/modules/map_studio_base_game_contract.py"
 PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_COMMAND_HISTORY RCDATA "Python/src/core/modules/map_studio_command_history.py"
 PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_CURVE_GUIDES RCDATA "Python/src/core/modules/map_studio_curve_guides.py"

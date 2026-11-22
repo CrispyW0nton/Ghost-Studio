@@ -123,7 +123,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_GEOMETRY_MODEL_DATA",
             "source_path": "src/core/geometry/model_data.py",
             "packaged_path": "Python/src/core/geometry/model_data.py",
-            "sha256": "06322a8d15289ca62ecc679acb4184ff99e3e87c175ea14756282c9a0d3b1efa"
+            "sha256": "215beb13b3582a2fdc0892bc0220c14bce9c4adfdf0cab11927a974442cab4b1"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_GEOMETRY_POLYGON_MESH_OPERATIONS",
@@ -327,7 +327,7 @@
             "resource_name": "PYTHON_PAYLOAD_MATH_UNREAL_LEVEL_SPACE",
             "source_path": "src/math/unreal_level_space.py",
             "packaged_path": "Python/src/math/unreal_level_space.py",
-            "sha256": "283c4e7eaa65e089b3fe00fc3a5d2680339f3912a89a6053cdea32f04934664f"
+            "sha256": "893c043d8bc3c4f5a352ff64f271df915380f7dbe2e3b486f88c7d219493a280"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_MATH_UNREAL_NATIVE_SURFACE",

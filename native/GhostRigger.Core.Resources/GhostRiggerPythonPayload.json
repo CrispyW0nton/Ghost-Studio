@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Resources",
-    "file_count": 21,
+    "file_count": 22,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -57,7 +57,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_GAME_KOTOR_LOADER",
             "source_path": "src/core/game/kotor_loader.py",
             "packaged_path": "Python/src/core/game/kotor_loader.py",
-            "sha256": "7a418d482c1e33f50c9edbe578dd0a7fce9925cda27dd90a09413fbf19317f78"
+            "sha256": "579b3ae3fe415af8751774e02f5947a4660b819472483df82e9a32a828518bb8"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_GAME_PYKOTOR_BRIDGE",
@@ -100,6 +100,12 @@
             "source_path": "src/core/resources/head_game_install.py",
             "packaged_path": "Python/src/core/resources/head_game_install.py",
             "sha256": "695a0ad08815faca32da40077f27ebf82c80b56a493e2221942d4ab2a87b1b68"
+        },
+        {
+            "resource_name": "PYTHON_PAYLOAD_CORE_RESOURCES_KOTOR_AUDIO_PAYLOAD",
+            "source_path": "src/core/resources/kotor_audio_payload.py",
+            "packaged_path": "Python/src/core/resources/kotor_audio_payload.py",
+            "sha256": "1cfca2f893df53caa45c227a15e4a08fac778524778c8065e62cb1965ac7aef5"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_RESOURCES_PLACEABLE_LIBRARY",

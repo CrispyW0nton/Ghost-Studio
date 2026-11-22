@@ -177,7 +177,7 @@
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_DISCOVERY",
             "source_path": "src/kotormcp/tools/discovery.py",
             "packaged_path": "Python/src/kotormcp/tools/discovery.py",
-            "sha256": "73907c8a5158c116a831ba7a95125376a9b35413465459176396fa960c8192eb"
+            "sha256": "c51db69e58ed2e22b426cf64b55afdc42a7c225cb7d09ffcb47f50dc60a7316b"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_GAME_TEST",
@@ -261,7 +261,7 @@
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_REFS",
             "source_path": "src/kotormcp/tools/refs.py",
             "packaged_path": "Python/src/kotormcp/tools/refs.py",
-            "sha256": "779440ed8a33e6eefab1a93fe3710ce6432fb468835c05f594f370ffbe4a96a5"
+            "sha256": "b26e8cc8d94f92868c5a89a39613a6ddc61dd5a85ef7d9e0104b154ed1d80777"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_KOTORMCP_TOOLS_RESOURCE",

@@ -412,7 +412,7 @@
     },
     {
         "project": "GhostRigger.Core.IO",
-        "python_file_count": 59,
+        "python_file_count": 60,
         "files": [
             "src\\adapters\\files\\__init__.py",
             "src\\adapters\\files\\local_file_writer.py",
@@ -433,6 +433,7 @@
             "src\\core\\mdl\\mdl_porter.py",
             "src\\core\\mdl\\mdl_reader_wrapper.py",
             "src\\core\\mdl\\mdl_writer.py",
+            "src\\core\\mdl\\mesh_channel_patch.py",
             "src\\core\\placeables\\__init__.py",
             "src\\core\\placeables\\placeable_utp_io.py",
             "src\\core\\secondary_motion\\__init__.py",
@@ -583,7 +584,7 @@
     },
     {
         "project": "GhostRigger.Core.Rendering",
-        "python_file_count": 135,
+        "python_file_count": 136,
         "files": [
             "src\\adapters\\gpu\\__init__.py",
             "src\\adapters\\gpu\\lightmap_baker.py",
@@ -696,6 +697,7 @@
             "src\\core\\rendering\\gpu_shaders.py",
             "src\\core\\rendering\\gpu_vbo_layout.py",
             "src\\core\\rendering\\hardware_info.py",
+            "src\\core\\rendering\\kotor_gui_font.py",
             "src\\core\\rendering\\kotor_gui_preview.py",
             "src\\core\\rendering\\mesh_render_data.py",
             "src\\core\\rendering\\picking.py",
@@ -724,7 +726,7 @@
     },
     {
         "project": "GhostRigger.Core.Resources",
-        "python_file_count": 21,
+        "python_file_count": 22,
         "files": [
             "src\\core\\assets\\__init__.py",
             "src\\core\\assets\\asset_preview.py",
@@ -742,6 +744,7 @@
             "src\\core\\resources\\game_resource_provider.py",
             "src\\core\\resources\\head_donor_catalog.py",
             "src\\core\\resources\\head_game_install.py",
+            "src\\core\\resources\\kotor_audio_payload.py",
             "src\\core\\resources\\placeable_library.py",
             "src\\resources\\__init__.py",
             "src\\resources\\game_detector.py",
@@ -751,7 +754,7 @@
     },
     {
         "project": "GhostRigger.Core.Scene",
-        "python_file_count": 140,
+        "python_file_count": 141,
         "files": [
             "src\\core\\level\\__init__.py",
             "src\\core\\level\\kmap_model.py",
@@ -811,6 +814,7 @@
             "src\\core\\modules\\authored_walkmesh_surfaces.py",
             "src\\core\\modules\\custom_module_packager.py",
             "src\\core\\modules\\dev_module_smoke.py",
+            "src\\core\\modules\\imported_mesh_partition.py",
             "src\\core\\modules\\map_studio_base_game_contract.py",
             "src\\core\\modules\\map_studio_command_history.py",
             "src\\core\\modules\\map_studio_curve_guides.py",
@@ -897,7 +901,7 @@
     },
     {
         "project": "GhostRigger.Core.Tools",
-        "python_file_count": 406,
+        "python_file_count": 407,
         "files": [
             "src\\adapters\\qt_viewport\\camera_gizmo_renderer.py",
             "src\\adapters\\qt_viewport\\camera_overlays.py",
@@ -1022,6 +1026,7 @@
             "src\\core\\modules\\authored_walkmesh_surfaces.py",
             "src\\core\\modules\\custom_module_packager.py",
             "src\\core\\modules\\dev_module_smoke.py",
+            "src\\core\\modules\\imported_mesh_partition.py",
             "src\\core\\modules\\map_studio_base_game_contract.py",
             "src\\core\\modules\\map_studio_command_history.py",
             "src\\core\\modules\\map_studio_curve_guides.py",
@@ -1337,7 +1342,7 @@
     },
     {
         "project": "GhostRigger.Core.Workflow",
-        "python_file_count": 157,
+        "python_file_count": 160,
         "files": [
             "src\\adapters\\facial\\__init__.py",
             "src\\adapters\\facial\\arkit_performance.py",
@@ -1478,8 +1483,11 @@
             "src\\core\\scripting\\data_authoring.py",
             "src\\core\\scripting\\dialogue_contract.py",
             "src\\core\\scripting\\dialogue_participants.py",
+            "src\\core\\scripting\\ncs_game_abi.py",
             "src\\core\\scripting\\packaging.py",
             "src\\core\\scripting\\project.py",
+            "src\\core\\scripting\\pykotor_ncs_compiler_2_3_1_diff.py",
+            "src\\core\\scripting\\pykotor_ncs_compiler_fix.py",
             "src\\core\\scripting\\quest.py",
             "src\\core\\scripting\\reference.py",
             "src\\core\\scripting\\studio.py",

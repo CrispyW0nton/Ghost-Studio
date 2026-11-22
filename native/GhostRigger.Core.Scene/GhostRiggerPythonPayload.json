@@ -2,7 +2,7 @@
     "schema": "ghostrigger_python_payload.v1",
     "phase": "P1.5 embedded python payload",
     "project": "GhostRigger.Core.Scene",
-    "file_count": 140,
+    "file_count": 141,
     "originals_remain_in_src": true,
     "files": [
         {
@@ -81,7 +81,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_LEVEL_MAP_STUDIO_TEXTURE_SIDECAR_JOURNAL",
             "source_path": "src/core/level/map_studio_texture_sidecar_journal.py",
             "packaged_path": "Python/src/core/level/map_studio_texture_sidecar_journal.py",
-            "sha256": "05bfb043be6a29fcce8d3e1d8f71c0d10e28eab287429f9511e72f8fb0ffed0a"
+            "sha256": "f7be7735981d7145c149998c0db432395058208920feacf30fdba0374a6cb9f0"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_INIT",
@@ -99,7 +99,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_CREATURE_BEHAVIOR",
             "source_path": "src/core/modules/authored_creature_behavior.py",
             "packaged_path": "Python/src/core/modules/authored_creature_behavior.py",
-            "sha256": "2a280ca54af0cc1be26d57f95590e54ed9cfff8f317075952b6466b31f94958e"
+            "sha256": "80c67d4bea127918c9099e3231948f27f7c1dfc846db9191b0a61f4100a6aafd"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_GAMEPLAY_MARKER_GEOMETRY",
@@ -123,7 +123,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_IMPORTED_MESH",
             "source_path": "src/core/modules/authored_imported_mesh.py",
             "packaged_path": "Python/src/core/modules/authored_imported_mesh.py",
-            "sha256": "4fd8c18c1ed82567316c70390609af0a599af27ed47ea5017d20095431957b0b"
+            "sha256": "4d0c97398e26cf3c1ef6c91257af584a11fda23c3b764e531213d70540d31589"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_EXPORT",
@@ -135,7 +135,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_KMAP_BRIDGE",
             "source_path": "src/core/modules/authored_module_kmap_bridge.py",
             "packaged_path": "Python/src/core/modules/authored_module_kmap_bridge.py",
-            "sha256": "09f3185cd940c47d0d0234e7e8beae10c318e46193532805a4a143210dda3a40"
+            "sha256": "53459e9a8ee7bb13546d4dc1c42e3b65437320d23dc9e346dd21d21d55d96197"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_LAYOUT",
@@ -159,7 +159,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_OBJECTS",
             "source_path": "src/core/modules/authored_module_objects.py",
             "packaged_path": "Python/src/core/modules/authored_module_objects.py",
-            "sha256": "507609f7576e63f51e5269b74f148c448cbf47df3a476bdf88ee9195698f0246"
+            "sha256": "d3be6f95b5ab36b8e0a0b07ef322894f0e2e59aa853ba992eacd3b5ded5447e6"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_AUTHORED_MODULE_PATHING",
@@ -354,6 +354,12 @@
             "sha256": "299112cc015de32ad2f26a90c79c7cd3776bc9afaccbb77083ffd393a33901cc"
         },
         {
+            "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_IMPORTED_MESH_PARTITION",
+            "source_path": "src/core/modules/imported_mesh_partition.py",
+            "packaged_path": "Python/src/core/modules/imported_mesh_partition.py",
+            "sha256": "3407a376a655ebbe25b229be6c4a2602639dabdc1626584c95ada1a1ab0853e1"
+        },
+        {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_BASE_GAME_CONTRACT",
             "source_path": "src/core/modules/map_studio_base_game_contract.py",
             "packaged_path": "Python/src/core/modules/map_studio_base_game_contract.py",
@@ -501,7 +507,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_PIE_NWSCRIPT_VM",
             "source_path": "src/core/modules/map_studio_pie_nwscript_vm.py",
             "packaged_path": "Python/src/core/modules/map_studio_pie_nwscript_vm.py",
-            "sha256": "98454b3c2d468587d1a10348e6702a070a9eac4a353fdc5906d29120f6623692"
+            "sha256": "8a05ebf353fb43ab43039847eb4a727245c236cfa4b5d4d60f941de520ae12b1"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_PIE_PARTY",
@@ -579,7 +585,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_TEXTURE_PAINT",
             "source_path": "src/core/modules/map_studio_texture_paint.py",
             "packaged_path": "Python/src/core/modules/map_studio_texture_paint.py",
-            "sha256": "0cdcd200831aa03f199ffcc4e53bb20e4dc78af8507e07cbd32eb7b056541cc4"
+            "sha256": "3eb13ea0139d0b04c4aace3af1a119702a8ad538f0c0d531ca6eb0b3312d4147"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_MAP_STUDIO_TOOL_ACTION_DISPATCH",
@@ -705,7 +711,7 @@
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_UNREAL_LEVEL_IMPORT",
             "source_path": "src/core/modules/unreal_level_import.py",
             "packaged_path": "Python/src/core/modules/unreal_level_import.py",
-            "sha256": "5ee1ca64818db3ea5735a11b5a177bd2c25f95b8aa668436c5a122bd8565e07b"
+            "sha256": "437377e14e5ddedcbb5177655250f221099ffadae516e071a56746553e4030bb"
         },
         {
             "resource_name": "PYTHON_PAYLOAD_CORE_MODULES_UNREAL_SECTOR_PROJECTION",
