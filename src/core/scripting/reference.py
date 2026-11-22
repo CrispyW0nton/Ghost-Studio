@@ -214,11 +214,13 @@ def inspect_ncs(
     game: str,
     resref: str,
     include_dirs: Sequence[str | Path] = (),
+    verify_recompile: bool = True,
 ) -> NcsInspection:
     """Disassemble NCS and independently test whether recovered source is exact."""
 
     from pykotor.common.misc import Game
-    from pykotor.resource.formats.ncs import bytes_ncs, compile_nss, read_ncs
+    from pykotor.resource.formats.ncs import bytes_ncs, read_ncs
+    from src.core.scripting.pykotor_ncs_compiler_fix import compile_nss_verified
     from pykotor.resource.formats.ncs.decompiler import NCSDecompiler
 
     target = _game_key(game)
@@ -228,11 +230,13 @@ def inspect_ncs(
     source = str(NCSDecompiler(ncs, pykotor_game).decompile() or "")
     exact = False
     error = ""
-    if source.strip():
+    if source.strip() and not verify_recompile:
+        error = "Exact recompile check was disabled by caller."
+    elif source.strip():
         try:
             rebuilt = bytes(
                 bytes_ncs(
-                    compile_nss(
+                    compile_nss_verified(
                         source,
                         pykotor_game,
                         library_lookup=[Path(value) for value in include_dirs] or None,
@@ -264,3 +268,12 @@ __all__ = [
     "ScriptReferenceParameter",
     "inspect_ncs",
 ]
+
+
+def convert_ncs_game_abi(data: bytes, *, abi: dict, resref: str = "script"):
+    """Offline K1->K2 ABI conversion; no installs or native acceptance implied."""
+    from .ncs_game_abi import convert_with_ghost
+    return convert_with_ghost(data, abi=abi, resref=resref)
+
+
+__all__.append("convert_ncs_game_abi")

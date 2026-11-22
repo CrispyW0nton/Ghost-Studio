@@ -14,7 +14,8 @@ from typing import Any
 
 from pykotor.common.misc import Game, ResRef
 from pykotor.resource.formats.gff import bytes_gff, read_gff
-from pykotor.resource.formats.ncs import bytes_ncs, compile_nss
+from pykotor.resource.formats.ncs import bytes_ncs
+from src.core.scripting.pykotor_ncs_compiler_fix import compile_nss_verified
 
 
 _RESREF_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,16}$")
@@ -163,7 +164,7 @@ def build_authored_creature_behavior_resources(
     if mode == "free_roam":
         script_resref = _roam_script_resref(template, spawn_script_resref)
         nss_source = _free_roam_nss(source_spawn)
-        ncs_bytes = bytes_ncs(compile_nss(nss_source, target_game))
+        ncs_bytes = bytes_ncs(compile_nss_verified(nss_source, target_game))
         root.set_resref("ScriptSpawn", script_resref)
         resources.append((script_resref, "ncs", ncs_bytes))
 

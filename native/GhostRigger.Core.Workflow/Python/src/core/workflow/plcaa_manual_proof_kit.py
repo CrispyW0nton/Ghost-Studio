@@ -19,7 +19,8 @@ from typing import Any, Callable, Iterable
 
 from pykotor.common.misc import Game, InventoryItem, ResRef
 from pykotor.resource.formats.gff import GFFContent, bytes_gff, read_gff
-from pykotor.resource.formats.ncs import bytes_ncs, compile_nss
+from pykotor.resource.formats.ncs import bytes_ncs
+from src.core.scripting.pykotor_ncs_compiler_fix import compile_nss_verified
 from pykotor.resource.generics.utp import dismantle_utp, read_utp
 
 
@@ -326,7 +327,7 @@ def _build_utp(
 
 
 def _compile_script(source: str, game: str) -> bytes:
-    return bytes_ncs(compile_nss(source, _pykotor_game(game)))
+    return bytes_ncs(compile_nss_verified(source, _pykotor_game(game)))
 
 
 def build_plcaa_manual_proof_kit(

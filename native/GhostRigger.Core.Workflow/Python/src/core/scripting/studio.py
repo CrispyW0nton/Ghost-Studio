@@ -34,6 +34,13 @@ _DIALOGUE_DISPLAY_INACTIVE_PRESENT_ATTRIBUTE = "_ghostrigger_display_inactive_pr
 _DIALOGUE_DISPLAY_INACTIVE_FIELD = "DisplayInactive"
 
 
+def _check_nwscript_provider(game):
+    """Apply Ghost Studio's PyKotor compiler fix, then prove JSR linking and ACTION order."""
+    from src.core.scripting.pykotor_ncs_compiler_fix import verify_nwscript_compiler
+
+    verify_nwscript_compiler(game)
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -785,6 +792,47 @@ class ScriptingStudioService:
             )
         return tuple(diagnostics)
 
+    def compile_native_script(
+        self, document: ScriptDocument, *, compiler_path: Path, source_path: Path, output_dir: Path,
+    ) -> ScriptCompileResult:
+        """Compile a staged source with PyKotor's fingerprinted external compiler provider.
+
+        The caller supplies a qualified compiler and its target-game nwscript.nss.
+        source_path may have sibling include files. A fresh output directory keeps
+        failed compilations from accepting stale bytecode left by another call.
+        """
+        from pykotor.resource.formats.ncs import read_ncs
+        from pykotor.resource.formats.ncs.compilers import ExternalNCSCompiler
+
+        diagnostics = list(self.validate_script(document))
+        backend = "PyKotor ExternalNCSCompiler"
+        payload = b""
+        if not any(row.blocking for row in diagnostics):
+            try:
+                source_path = Path(source_path).resolve(strict=True)
+                if source_path.name.casefold() != (document.resref + ".nss").casefold():
+                    raise ValueError("Staged NSS filename does not match the document.")
+                if source_path.read_text(encoding="utf-8-sig") != document.source:
+                    raise ValueError("Staged NSS differs from the requested document.")
+                compiler = ExternalNCSCompiler(Path(compiler_path).resolve(strict=True))
+                backend += " / " + compiler.get_info().name
+                output_dir = Path(output_dir).resolve()
+                output_dir.mkdir(exist_ok=False)
+                target = output_dir / (document.resref + ".ncs")
+                stdout, stderr = compiler.compile_script(source_path, target, _pykotor_game(document.game))
+                if stderr.strip() or not target.is_file():
+                    raise ValueError((stderr.strip() or stdout.strip() or "Native compiler produced no NCS.")[:1000])
+                candidate = target.read_bytes()
+                if candidate[:9] != b"NCS V1.0\x42" or int.from_bytes(candidate[9:13], "big") != len(candidate):
+                    raise ValueError("Native compiler produced an invalid NCS header or size.")
+                if not read_ncs(candidate).instructions:
+                    raise ValueError("Native compiler produced no instructions.")
+                payload = candidate
+            except (OSError, RuntimeError, ValueError) as exc:
+                diagnostics.append(StudioDiagnostic("blocking", "script.native_compile_failed", str(exc), document.resref))
+        return ScriptCompileResult(document.resref, document.game, ncs_bytes=payload, compiler=backend,
+                                   diagnostics=tuple(diagnostics), readback_ok=bool(payload))
+
     def compile_script(
         self,
         document: ScriptDocument,
@@ -797,6 +845,7 @@ class ScriptingStudioService:
         try:
             from pykotor.resource.formats.ncs import bytes_ncs, compile_nss, read_ncs
 
+            _check_nwscript_provider(_pykotor_game(document.game))
             compiled = compile_nss(
                 document.source,
                 _pykotor_game(document.game),
