@@ -59,6 +59,15 @@ def test_arithmetic_branching_and_subroutine_flow() -> None:
     assert result.global_numbers == {"x": 8}
 
 
+def test_const_object_self_compares_equal_to_current_script_actor() -> None:
+    from src.core.modules.map_studio_pie_nwscript_vm import _function_table
+
+    lookup = next(i for i, f in enumerate(_function_table("K2")) if f.name == "GetFirstPC")
+    program = [_ins("CONSTO", 0), _ins("ACTION", lookup, 0), _ins("EQUALOO"), _ins("RETN")]
+    machine, result = _run(program, self_object_id=100)
+    assert result.completed and machine.stack == [1]
+
+
 def test_jz_takes_branch_on_zero_and_loops_terminate() -> None:
     # while (i != 3) i++;  encoded with JNZ back-edge, then SetGlobalNumber("i", i).
     end = _ins("RETN")

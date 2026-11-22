@@ -219,7 +219,7 @@ async def handle_list_references(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if entry is None:
             return _err(f"Resource {inp.resref}.{inp.restype} not found.")
 
-        gff = read_gff(BytesIO(entry.data))
+        gff = read_gff(bytes(entry.data))
         file_type = restype.extension.upper()
         refs = extract_references(gff, file_type)
         out = [{"ref_kind": r.ref_kind, "value": r.value, "field_path": r.field_path} for r in refs]
@@ -336,7 +336,31 @@ def _dlg_summary(gff: Any) -> Dict[str, Any]:
     """Build a short DLG summary from root (entry/reply counts, script refs)."""
     try:
         from pykotor.resource.formats.gff.gff_data import GFFList  # type: ignore[import]
-        from pykotor.tools.references import extract_references  # type: ignore[import]
+        try:
+            from pykotor.tools.references import extract_references
+            reference_scope = "pykotor full extractor"
+        except ImportError:
+            # Ghost's installed PyKotor omits tools.references. Traverse the
+            # already-parsed typed DLG tree; this is not another binary reader.
+            from types import SimpleNamespace
+            from pykotor.resource.formats.gff import GFFFieldType
+            def extract_references(document, _resource_type):
+                rows = []
+                scripts = {"Script", "Script2", "Active", "Active2", "EndConversation", "EndConverAbort"}
+                def visit(node):
+                    for label, kind, value in node:
+                        if kind == GFFFieldType.Struct:
+                            visit(value)
+                        elif kind == GFFFieldType.List:
+                            for child in value:
+                                visit(child)
+                        elif label in scripts and str(value):
+                            rows.append(SimpleNamespace(ref_kind="script", value=str(value)))
+                        elif label == "Conversation" and str(value):
+                            rows.append(SimpleNamespace(ref_kind="conversation", value=str(value)))
+                visit(document.root)
+                return rows
+            reference_scope = "typed DLG script/condition/conversation fields only"
         root = gff.root
         entry_list = root.get("EntryList")
         reply_list = root.get("ReplyList")
@@ -351,6 +375,7 @@ def _dlg_summary(gff: Any) -> Dict[str, Any]:
             "script_refs": list(dict.fromkeys(scripts)),
             "conversation_refs": list(dict.fromkeys(conversations)),
             "reference_count": len(refs),
+            "reference_scope": reference_scope,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -388,7 +413,7 @@ async def handle_describe_dlg(arguments: Dict[str, Any]) -> Dict[str, Any]:
         entry = installation.get_resource(inp.resref, "DLG")
         if entry is None:
             return _err(f"DLG {inp.resref} not found.")
-        gff = read_gff(BytesIO(entry.data))
+        gff = read_gff(bytes(entry.data))
         summary = _dlg_summary(gff)
         summary["resref"] = inp.resref
         return json_content(summary)
@@ -413,7 +438,7 @@ async def handle_describe_jrl(arguments: Dict[str, Any]) -> Dict[str, Any]:
         entry = installation.get_resource(inp.resref, "JRL")
         if entry is None:
             return _err(f"JRL {inp.resref} not found.")
-        gff = read_gff(BytesIO(entry.data))
+        gff = read_gff(bytes(entry.data))
         summary = _jrl_summary(gff)
         summary["resref"] = inp.resref
         return json_content(summary)
@@ -444,7 +469,7 @@ async def handle_describe_resource_refs(arguments: Dict[str, Any]) -> Dict[str, 
         if entry is None:
             return _err(f"Resource {inp.resref}.{inp.restype} not found.")
 
-        gff = read_gff(BytesIO(entry.data))
+        gff = read_gff(bytes(entry.data))
         file_type = restype.extension.upper()
         refs = extract_references(gff, file_type)
         out = [{"ref_kind": r.ref_kind, "value": r.value, "field_path": r.field_path} for r in refs]

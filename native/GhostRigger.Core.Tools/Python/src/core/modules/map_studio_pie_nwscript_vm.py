@@ -36,6 +36,7 @@ OBJECT_INVALID = 1
 _ENGINE_INVALID = 0x7F000000
 
 _DEFAULT_INSTRUCTION_BUDGET = 250_000
+_ASCII_CASE_FOLD = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")
 
 
 class NCSExecutionError(RuntimeError):
@@ -559,7 +560,9 @@ class NCSVirtualMachine:
             elif name == "CONSTS":
                 self.stack.append(str(args[0]))
             elif name == "CONSTO":
-                self.stack.append(_signed32(args[0]))
+                value = _signed32(args[0])
+                # Bind the VM's self token before comparing or capturing the object.
+                self.stack.append(self.context.resolve_object(value))
             elif name in ("CPDOWNSP", "CPDOWNBP"):
                 offset, size = _signed32(args[0]), int(args[1])
                 count = size // 4
@@ -589,8 +592,8 @@ class NCSVirtualMachine:
                 self.stack[index] = int(self.stack[index]) + delta
             elif name == "SAVEBP":
                 self._bp_stack.append(self.bp)
-                self.stack.append(self.bp)
                 self.bp = len(self.stack)
+                self.stack.append(self._bp_stack[-1])
             elif name == "RESTOREBP":
                 if not self._bp_stack:
                     raise NCSExecutionError("RESTOREBP without SAVEBP")
@@ -713,7 +716,11 @@ class NCSVirtualMachine:
         elif name in ("EQUALII", "EQUALFF", "EQUALSS", "EQUALOO",
                       "NEQUALII", "NEQUALFF", "NEQUALSS", "NEQUALOO"):
             left, right = pop2()
-            equal = left == right
+            # Odyssey compares NCS string operands using ASCII-insensitive equality.
+            if name.endswith("SS"):
+                equal = left.translate(_ASCII_CASE_FOLD) == right.translate(_ASCII_CASE_FOLD)
+            else:
+                equal = left == right
             self.stack.append(int(equal if name.startswith("EQUAL") else not equal))
         elif name in ("GEQII", "GEQFF", "GTII", "GTFF", "LTII", "LTFF", "LEQII", "LEQFF"):
             left, right = pop2()
