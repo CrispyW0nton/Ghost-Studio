@@ -19,7 +19,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 from uuid import uuid4
 
 from .project import NarrativeProject, NarrativeProjectService
@@ -28,6 +28,7 @@ from .project import NarrativeProject, NarrativeProjectService
 OVERRIDE_STAGE_FILE_TYPE = "GhostStudioOverrideStage"
 PACKAGE_MANIFEST_FILE_TYPE = "GhostStudioNarrativePackage"
 _RESREF_PATTERN = re.compile(r"^[a-z0-9_]{1,16}$")
+_STOCK_ARCHIVE_RESREF_PATTERN = re.compile(r"^[a-z0-9_+!\-]{1,16}$")
 _ARCHIVE_RESOURCE_TYPES = {"erf", "mod", "rim", "sav"}
 _GLOBAL_INSTALL_RESOURCE_TYPES = {"tlk"}
 _BLUEPRINT_KIND = {
@@ -127,6 +128,25 @@ class PackageResource:
     @property
     def identity(self) -> tuple[str, str]:
         return self.resref, self.restype
+
+    @classmethod
+    def from_archive_member(
+        cls,
+        resref: str,
+        restype: str,
+        data: bytes,
+        original_members: Mapping[tuple[str, str], bytes],
+    ) -> "PackageResource":
+        """Keep a legacy archive name only for an unchanged original member."""
+        if _RESREF_PATTERN.fullmatch(resref) or not _STOCK_ARCHIVE_RESREF_PATTERN.fullmatch(resref):
+            return cls(resref, restype, data)
+        blob = bytes(data)
+        kind = _resource_type(restype).extension.lower()
+        if original_members.get((resref, kind)) != blob:
+            raise ValueError(f"Legacy archive member has no unchanged preimage: {resref}.{kind}")
+        row = cls("legacy_member", kind, blob)
+        object.__setattr__(row, "resref", resref)
+        return row
 
     @classmethod
     def from_path(
@@ -303,7 +323,7 @@ def _archive_bytes(resources: Sequence[PackageResource], archive_type: str) -> b
     # Odyssey save games use the same physical ``MOD `` container signature as
     # modules.  PyKotor models that distinction with ``is_save`` and the output
     # ResourceType, rather than a third ERFType enum value.
-    archive = ERF(ERFType.MOD if kind in {"MOD", "SAV"} else ERFType.ERF, is_save=kind == "SAV")
+    archive = ERF(ERFType.MOD if kind in {"MOD", "SAV"} else ERFType.ERF, is_save=kind == "SAV", build_year=0, build_day=0)
     for row in resources:
         archive.set_data(row.resref, _resource_type(row.restype), row.data)
     output_type = {
