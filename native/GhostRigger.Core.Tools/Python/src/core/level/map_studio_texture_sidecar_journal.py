@@ -170,27 +170,20 @@ def tga_dirty_tile_byte_ranges(
     if size <= 0:
         raise ValueError("Texture-paint tile size must be positive.")
     payload = bytes(tga_bytes)
+    # Map Studio writes bottom-origin TGAs (descriptor 0x08), because the engine
+    # ignores the top-left bit. Sidecars written before that used 0x28 (top-down).
+    descriptor = payload[17] if len(payload) >= 18 else -1
     expected_header = struct.pack(
-        "<BBBHHBHHHHBB",
-        0,
-        0,
-        2,
-        0,
-        0,
-        0,
-        0,
-        0,
-        image_width,
-        image_height,
-        32,
-        0x28,
+        "<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, image_width, image_height, 32,
+        descriptor if descriptor in (0x08, 0x28) else 0x08,
     )
     expected_size = 18 + (image_width * image_height * 4)
     if len(payload) != expected_size or payload[:18] != expected_header:
         raise ValueError(
-            "Dirty-tile byte mapping requires GhostRigger's uncompressed 32-bit, "
-            "top-left-origin TGA with no image ID or color map."
+            "Dirty-tile byte mapping requires GhostRigger's uncompressed 32-bit "
+            "TGA with no image ID or color map."
         )
+    bottom_up = descriptor == 0x08
     ranges: list[tuple[int, int]] = []
     for tile_x, tile_y in sorted(set((int(x), int(y)) for x, y in tuple(dirty_tiles or ()))):
         x = tile_x * size
@@ -200,7 +193,8 @@ def tga_dirty_tile_byte_ranges(
         row_width = min(size, image_width - x) * 4
         row_count = min(size, image_height - y)
         for row in range(row_count):
-            start = 18 + ((((y + row) * image_width) + x) * 4)
+            file_row = (image_height - 1 - (y + row)) if bottom_up else (y + row)
+            start = 18 + (((file_row * image_width) + x) * 4)
             ranges.append((start, start + row_width))
     return _normalise_ranges(ranges, size=expected_size)
 

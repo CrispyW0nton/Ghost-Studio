@@ -557,7 +557,13 @@ def suggest_kotor_texture_resref(value: str, existing: Iterable[str] = ()) -> st
 
 
 def encode_tga_rgba(width: int, height: int, rgba: bytes | bytearray) -> bytes:
-    """Encode an uncompressed 32-bit, top-left-origin TGA for KOTOR export."""
+    """Encode an uncompressed 32-bit, bottom-origin TGA for KOTOR export.
+
+    ``rgba`` is top-down (as Pillow decodes). The Odyssey engine ignores the TGA
+    descriptor's top-left-origin bit and always reads rows bottom-up, so rows are
+    written bottom-up with the bit clear (descriptor 0x08): the game then draws
+    exactly what Pillow and the Map Studio viewport show.
+    """
 
     width = int(width)
     height = int(height)
@@ -565,9 +571,9 @@ def encode_tga_rgba(width: int, height: int, rgba: bytes | bytearray) -> bytes:
         raise ValueError("TGA dimensions must be in the range 1..65535.")
     if len(rgba) != width * height * 4:
         raise ValueError("RGBA payload size does not match TGA dimensions.")
-    header = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, width, height, 32, 0x28)
-    pixels = np.frombuffer(rgba, dtype=np.uint8).reshape((-1, 4))
-    bgra = pixels[:, (2, 1, 0, 3)].tobytes()
+    header = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, width, height, 32, 0x08)
+    pixels = np.frombuffer(rgba, dtype=np.uint8).reshape((height, width, 4))
+    bgra = np.ascontiguousarray(pixels[::-1, :, (2, 1, 0, 3)]).tobytes()
     return header + bgra
 
 
