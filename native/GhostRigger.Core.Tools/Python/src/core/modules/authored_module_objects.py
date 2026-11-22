@@ -137,17 +137,38 @@ class AuthoredSoundInstance:
     instance_id: str = ""
 
 
+#: Retail GIT camera defaults, measured on 235 placed dialogue cameras in KOTOR II.
+#: Orientation is a yaw-only quaternion stored (w, 0, 0, z) in file order, and the
+#: camera looks along heading = yaw + 90 degrees. Pitch is degrees from straight
+#: down (90 = level; retail median 83). Height is metres above Position.
+RETAIL_CAMERA_FIELD_OF_VIEW = 55.0
+RETAIL_CAMERA_PITCH = 90.0
+RETAIL_CAMERA_HEIGHT = 1.5
+
+
+def camera_orientation_for_heading(heading_degrees: float) -> Vec4:
+    """GIT camera Orientation (file order) that looks along ``heading_degrees``."""
+    yaw = math.radians(float(heading_degrees) - 90.0)
+    return (math.cos(yaw / 2.0), 0.0, 0.0, math.sin(yaw / 2.0))
+
+
+def camera_heading_degrees(orientation: Vec4) -> float:
+    """Inverse of :func:`camera_orientation_for_heading` for a yaw-only orientation."""
+    w, _x, _y, z = (float(value) for value in orientation)
+    return (math.degrees(2.0 * math.atan2(z, w)) + 90.0) % 360.0
+
+
 @dataclass(frozen=True)
 class AuthoredCameraInstance:
-    """Authored area camera placement for a GIT CameraList entry."""
+    """Authored area camera placement for a GIT CameraList entry (retail conventions)."""
 
     camera_id: int | str
     position: Vec3 = (0.0, 0.0, 0.0)
-    orientation: Vec4 = (0.0, 0.0, 0.0, 1.0)
-    field_of_view: float = 45.0
-    height: float = 0.0
+    orientation: Vec4 = (1.0, 0.0, 0.0, 0.0)
+    field_of_view: float = RETAIL_CAMERA_FIELD_OF_VIEW
+    height: float = RETAIL_CAMERA_HEIGHT
     mic_range: float = 0.0
-    pitch: float = 0.0
+    pitch: float = RETAIL_CAMERA_PITCH
     instance_id: str = ""
 
 
@@ -364,6 +385,18 @@ def validate_authored_gameplay_placement(placement: AuthoredGameplayPlacement) -
             blocking.append(f"Camera {camera.camera_id or '(missing)'} has an invalid mic range.")
         if not math.isfinite(float(camera.pitch)):
             blocking.append(f"Camera {camera.camera_id or '(missing)'} has an invalid pitch.")
+        elif not 10.0 <= float(camera.pitch) <= 170.0:
+            warnings.append(
+                f"Camera {camera.camera_id or '(missing)'} pitch {float(camera.pitch):g} looks nearly straight "
+                "down or up; KOTOR pitch is degrees from straight down (90 = level)."
+            )
+        if _orientation_ok(camera.orientation) and (
+            abs(float(camera.orientation[1])) > 1.0e-4 or abs(float(camera.orientation[2])) > 1.0e-4
+        ):
+            warnings.append(
+                f"Camera {camera.camera_id or '(missing)'} orientation is not a yaw-only (w, 0, 0, z) "
+                "quaternion; retail cameras store yaw only and use Pitch for tilt."
+            )
     for store in placement.stores:
         _validate_template("Store", store.template_resref, blocking)
     return AuthoredGameplayPlacementValidation(

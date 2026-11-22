@@ -663,11 +663,12 @@ def _placement(data: Any, module_root: str) -> AuthoredGameplayPlacement:
         AuthoredCameraInstance(
             camera_id=item.get("camera_id", item.get("id", 0)),
             position=_vec3(item.get("position")),
-            orientation=_vec4(item.get("orientation")),
-            field_of_view=_float(item.get("field_of_view"), 45.0),
+            # Retail GIT camera orientation is yaw-only (w, 0, 0, z) in file order.
+            orientation=_vec4(item.get("orientation"), (1.0, 0.0, 0.0, 0.0)),
+            field_of_view=_float(item.get("field_of_view"), 55.0),
             height=_float(item.get("height"), 0.0),
             mic_range=_float(item.get("mic_range"), 0.0),
-            pitch=_float(item.get("pitch"), 0.0),
+            pitch=_float(item.get("pitch"), 90.0),
             instance_id=_migrated_placement_instance_id(
                 module_root=module_root, kind="camera", index=index, source=item, seen=seen_instance_ids
             ),
