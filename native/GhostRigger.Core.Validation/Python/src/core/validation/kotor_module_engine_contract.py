@@ -1581,6 +1581,36 @@ def _parse_pth(data: bytes, report: ValidationReport, module_resref: str) -> tup
     return points, connections
 
 
+#: Dummy nodes every retail hostile creature model carries (C_Kinrath, C_KhoundA,
+#: C_Kataarn): cutscenedummy -> rootdummy, camerahook, impact and talkdummy.
+#: Custom creatures without them have shown the wrong (teal) health-bar colour.
+CREATURE_REQUIRED_DUMMY_NODES = ("cutscenedummy", "rootdummy", "camerahook", "impact", "talkdummy")
+_MDL_CLASSIFICATION_CHARACTER = 0x04
+
+
+def missing_creature_dummy_nodes(mdl: bytes) -> tuple[str, ...] | None:
+    """Required creature dummies a standalone character MDL lacks.
+
+    Returns ``None`` when the model is not a character, inherits from a
+    supermodel (which may supply the nodes) or cannot be parsed.
+    """
+    if len(mdl) < _MDL_MIN_SIZE or mdl[_MDL_BASE + 80] != _MDL_CLASSIFICATION_CHARACTER:
+        return None
+    supermodel = mdl[_MDL_BASE + 80 + 56 : _MDL_BASE + 80 + 88].split(b"\0", 1)[0].decode("ascii", "replace")
+    if supermodel.strip().lower() not in {"", "null"}:
+        return None
+    table_rel = struct.unpack_from("<I", mdl, _MDL_BASE + 80 + 104)[0]
+    count = struct.unpack_from("<I", mdl, _MDL_BASE + 80 + 108)[0]
+    table_abs = _MDL_BASE + table_rel
+    if count > _MAX_REASONABLE_COUNT or not _bounded(mdl, table_abs, count * 4):
+        return None
+    names = {
+        _read_c_string(mdl, _MDL_BASE + struct.unpack_from("<I", mdl, table_abs + index * 4)[0]).lower()
+        for index in range(count)
+    }
+    return tuple(node for node in CREATURE_REQUIRED_DUMMY_NODES if node not in names)
+
+
 def validate_kotor_module_engine_contract(
     request: KotorModuleEngineContractRequest,
 ) -> KotorModuleEngineContractReport:
@@ -1768,6 +1798,20 @@ def validate_kotor_module_engine_contract(
             f"Room resources are not referenced by LYT: {orphaned}.",
             resource=f"{module_resref}.lyt",
         )
+
+    for (resref, restype), payload in sorted(resources.items()):
+        if restype != "mdl" or resref in canonical_rooms:
+            continue
+        missing = missing_creature_dummy_nodes(payload)
+        if missing:
+            _add_issue(
+                validation,
+                ValidationSeverity.WARNING,
+                "map.engine.creature.missing_dummy_nodes",
+                f"{resref}.mdl is a standalone character model without {', '.join(missing)}; "
+                "retail creatures carry these dummies (missing ones have shown the wrong health-bar colour).",
+                resource=f"{resref}.mdl",
+            )
 
     duplicate_positions: dict[tuple[float, float, float], list[str]] = {}
     for room, position in room_positions.items():
