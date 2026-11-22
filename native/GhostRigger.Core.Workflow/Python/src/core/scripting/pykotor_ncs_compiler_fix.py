@@ -232,9 +232,28 @@ def verify_nwscript_compiler(game: Any) -> None:
     _probe_compiler(game)
 
 
+#: Opcodes the retail VMs execute. K2's CVirtualMachineInternal::RunInstructions
+#: (0x006FF9F0) rejects anything outside 0x01-0x2C (NOP 0x2D included) and
+#: aborts the whole script, so such bytecode must never be shipped.
+RETAIL_OPCODES = range(0x01, 0x2D)
+
+
+def assert_retail_opcodes(ncs: Any) -> None:
+    """Raise if a compiled ``NCS`` holds an opcode the retail VM aborts on."""
+    for index, instruction in enumerate(getattr(ncs, "instructions", ()) or ()):
+        code = int(instruction.ins_type.value[0])
+        if code not in RETAIL_OPCODES:
+            raise ValueError(
+                f"Compiled NCS instruction {index} uses opcode 0x{code:02X} "
+                f"({instruction.ins_type.name}); the retail VM aborts on it."
+            )
+
+
 def compile_nss_verified(source: str, game: Any, **kwargs: Any):
-    """``pykotor.resource.formats.ncs.compile_nss`` behind :func:`verify_nwscript_compiler`."""
+    """``compile_nss`` behind :func:`verify_nwscript_compiler`, rejecting non-retail opcodes."""
     verify_nwscript_compiler(game)
     from pykotor.resource.formats.ncs import compile_nss
 
-    return compile_nss(source, game, **kwargs)
+    ncs = compile_nss(source, game, **kwargs)
+    assert_retail_opcodes(ncs)
+    return ncs

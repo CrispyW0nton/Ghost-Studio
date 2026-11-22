@@ -843,10 +843,10 @@ class ScriptingStudioService:
         if any(row.blocking for row in diagnostics):
             return ScriptCompileResult(document.resref, document.game, diagnostics=tuple(diagnostics))
         try:
-            from pykotor.resource.formats.ncs import bytes_ncs, compile_nss, read_ncs
+            from pykotor.resource.formats.ncs import bytes_ncs, read_ncs
+            from src.core.scripting.pykotor_ncs_compiler_fix import compile_nss_verified
 
-            _check_nwscript_provider(_pykotor_game(document.game))
-            compiled = compile_nss(
+            compiled = compile_nss_verified(
                 document.source,
                 _pykotor_game(document.game),
                 library_lookup=[Path(value) for value in include_dirs] or None,
