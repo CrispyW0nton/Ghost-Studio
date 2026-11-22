@@ -230,12 +230,14 @@ def _summarize_2da(data: bytes) -> Dict[str, Any]:
 
 def _describe_resource(result) -> Dict[str, Any]:
     summary: Dict[str, Any] = {
-        "resref": result.resname if hasattr(result, "resname") and not callable(result.resname) else result.resname(),
-        "type": result.restype.name if hasattr(result, "restype") and not callable(result.restype) else result.restype().name,
+        "resref": (getattr(result, "resref", None) or
+                   (result.resname() if callable(getattr(result, "resname", None)) else result.resname)),
+        "type": (result.restype if isinstance(result.restype, str) else
+                 (result.restype() if callable(result.restype) else result.restype).name),
         "bytes": len(result.data),
     }
     try:
-        summary["source"] = str(result.filepath)
+        summary["source"] = str(getattr(result, "filepath", getattr(result, "source", "")))
     except Exception:
         pass
     data = result.data
@@ -379,7 +381,8 @@ async def handle_describe_resource(arguments: Dict[str, Any]) -> Dict[str, Any]:
             SearchLocation.MODULES,
             SearchLocation.CHITIN,
         ]
-        result = installation.resource(inp.resref, restype, order=order)
+        result = installation.get_resource(inp.resref, inp.restype.lstrip(".").lower(),
+                                           order=["override", "modules", "chitin"])
         if result is None:
             return json_content({"error": f"{inp.resref}.{restype.extension} not found."})
         return json_content(_describe_resource(result))

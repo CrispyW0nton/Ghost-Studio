@@ -80,6 +80,44 @@ class TwoDASnapshot:
     rows: tuple[tuple[str, ...], ...]
 
 
+def copy_binary_2da_cells(
+    source: bytes, edits: Iterable[tuple[int, str, int, str]]
+) -> bytes:
+    """Copy existing V2.b cell values without rebuilding the string pool.
+
+    Each edit is (destination row, destination column, source row, source
+    column). All donors refer to the original table. This supports targeted
+    edits when a complete re-encode would overflow the 16-bit cell offsets.
+    """
+    signature = b"2DA V2.b\n"
+    if not source.startswith(signature):
+        raise ValueError("Cell copying requires a binary V2.b 2DA.")
+    before = TwoDADocument.load(source).snapshot()
+    table = bytearray(source)
+    start = source.index(b"\0", len(signature)) + 1
+    row_count, = struct.unpack_from("<I", source, start)
+    if row_count != len(before.rows):
+        raise ValueError("Binary 2DA row count differs from the decoded table.")
+    start += 4
+    for _ in range(row_count):
+        start = source.index(b"\t", start) + 1
+    width = len(before.headers)
+    columns = {name: i for i, name in enumerate(before.headers)}
+    if start + 2 * (row_count * width + 1) > len(source):
+        raise ValueError("Truncated binary 2DA cell index.")
+    applied = set()
+    for dst_row, dst_column, src_row, src_column in edits:
+        if not (0 <= dst_row < row_count and 0 <= src_row < row_count):
+            raise IndexError("Binary 2DA row outside the table.")
+        dst = start + 2 * (dst_row * width + columns[dst_column])
+        src = start + 2 * (src_row * width + columns[src_column])
+        if dst in applied:
+            raise ValueError("Duplicate binary 2DA destination cell.")
+        table[dst:dst+2] = source[src:src+2]
+        applied.add(dst)
+    return bytes(table)
+
+
 class TwoDADocument:
     """Editable 2DA table with immutable, undo-ready snapshots."""
 
@@ -102,14 +140,46 @@ class TwoDADocument:
         from pykotor.resource.formats.twoda import read_2da
 
         data, source_path = _read_source(source)
+        if data.startswith((b"2DA V2.0\n", b"2DA V2.0\r\n", b"2DA V2.0\r")):
+            # PyKotor's reader is binary-only; loose Override tables are often ASCII V2.0.
+            from src.core.templates.twoda import TwoDA
+
+            text_table = TwoDA.from_bytes(data)
+            # "****" is ASCII's blank marker; binary V2.b stores the same cell as "".
+            rows = [
+                ["" if cell == "****" else cell for cell in row]
+                for row in text_table._rows
+            ]
+            return cls(text_table.columns, list(text_table._labels), rows, source_path=source_path)
         table = read_2da(data)
+        recovered_legacy_binary_cells = False
+        # Some shipped V2.b tables declare a zero-length string pool yet keep
+        # offset-addressed strings; the Kaitai path then returns only empty cells.
+        # Use PyKotor's offset-following legacy decoder only when it recovers data
+        # with the identical table shape.
+        if data.startswith(b"2DA V2.b") and table.get_height() and not any(
+            table.get_cell(i, header)
+            for i in range(table.get_height())
+            for header in table.get_headers()
+        ):
+            from pykotor.common.stream import BinaryReader
+            from pykotor.resource.formats.twoda.io_twoda import _load_twoda_legacy
+
+            legacy = _load_twoda_legacy(BinaryReader.from_bytes(data))
+            if legacy.get_headers() != table.get_headers() or legacy.get_labels() != table.get_labels():
+                raise ValueError("Binary 2DA readers disagree on table shape.")
+            if any(legacy.get_cell(i, header) for i in range(legacy.get_height()) for header in legacy.get_headers()):
+                table = legacy
+                recovered_legacy_binary_cells = True
         headers = table.get_headers()
         labels = table.get_labels()
         rows = [
             [table.get_cell(row_index, header) for header in headers]
             for row_index in range(table.get_height())
         ]
-        return cls(headers, labels, rows, source_path=source_path)
+        document = cls(headers, labels, rows, source_path=source_path)
+        document.recovered_legacy_binary_cells = recovered_legacy_binary_cells
+        return document
 
     @classmethod
     def from_snapshot(cls, snapshot: TwoDASnapshot) -> "TwoDADocument":
@@ -330,13 +400,66 @@ class TwoDADocument:
             table.add_row(label, dict(zip(self._headers, values, strict=True)))
         return table
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, *, append_only_base: TwoDASnapshot | None = None) -> bytes:
+        """Serialize, optionally retaining duplicate row labels inherited from a base."""
         from pykotor.resource.formats.twoda import bytes_2da
 
-        blocking = [diagnostic.message for diagnostic in self.validate() if diagnostic.blocking]
+        inherited_labels = False
+        if append_only_base is not None:
+            base_count = len(append_only_base.rows)
+            base = self.snapshot()
+            if (base.headers != append_only_base.headers
+                    or base.labels[:base_count] != append_only_base.labels
+                    or base.rows[:base_count] != append_only_base.rows):
+                raise ValueError("Append-only serialization requires the exact original table prefix.")
+            added = base.labels[base_count:]
+            if len(set(added)) != len(added) or set(added).intersection(append_only_base.labels):
+                raise ValueError("New 2DA row labels must be unique.")
+            inherited_labels = True
+
+        blocking = [
+            diagnostic.message for diagnostic in self.validate()
+            if diagnostic.blocking and not (inherited_labels and diagnostic.code == "2da.duplicate_labels")
+        ]
         if blocking:
             raise ValueError("Cannot serialize invalid 2DA: " + "; ".join(blocking))
+        unique = {cell for row in self._rows for cell in row}
+        encoded = {cell: cell.encode("windows-1252") for cell in unique}
+        if any(b"\0" in data for data in encoded.values()):
+            raise ValueError("2DA cells cannot contain a NUL byte.")
+        if sum(len(data) + 1 for data in encoded.values()) > 65535:
+            # V2.b addresses cells with uint16 pool offsets; share suffixes before failing.
+            return self._compact_binary(encoded)
         return bytes(bytes_2da(self.to_pykotor()))
+
+    def _compact_binary(self, encoded: dict[str, bytes]) -> bytes:
+        """Serialize a large V2.b table with shared string suffixes in the uint16 cell pool."""
+        from array import array
+        import sys
+
+        # Sorted by reversed bytes (descending), each string comes right before the
+        # strings that are its suffixes, so they can point into the same host string.
+        hosts = sorted(encoded, key=lambda value: encoded[value][::-1], reverse=True)
+        pool = bytearray()
+        offsets: dict[str, int] = {}
+        previous = b""
+        terminator = 0
+        for value in hosts:
+            raw = encoded[value]
+            if not pool or not previous.endswith(raw):
+                pool.extend(raw + b"\0")
+                terminator = len(pool) - 1
+            offsets[value] = terminator - len(raw)
+            previous = raw
+        if len(pool) > 65535:
+            raise ValueError(f"2DA cell strings need {len(pool)} bytes even with shared suffixes (limit 65535).")
+        indices = array("H", (offsets[cell] for row in self._rows for cell in row))
+        if sys.byteorder != "little":
+            indices.byteswap()
+        headers = "".join(column + "\t" for column in self._headers).encode("windows-1252")
+        labels = "".join(label + "\t" for label in self._labels).encode("windows-1252")
+        return (b"2DA V2.b\n" + headers + b"\0" + struct.pack("<I", self.row_count) + labels
+                + indices.tobytes() + struct.pack("<H", len(pool)) + pool)
 
     def save(self, path: str | Path | None = None) -> Path:
         target = Path(path) if path is not None else self.source_path

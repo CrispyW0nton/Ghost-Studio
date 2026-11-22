@@ -95,7 +95,7 @@ class TwoDA:
     # ── Constructors ─────────────────────────────────────────────────────────
 
     @classmethod
-    def from_bytes(cls, data: bytes, name: str = '') -> '2DA':
+    def from_bytes(cls, data: bytes, name: str = '') -> 'TwoDA':
         """Auto-detect binary or ASCII format and parse."""
         if not data:
             raise ValueError("Empty data")
@@ -118,7 +118,7 @@ class TwoDA:
         raise ValueError(f"Unknown 2DA format: {data[:16]!r}")
 
     @classmethod
-    def _parse_with_pykotor(cls, data: bytes, name: str) -> Optional['2DA']:
+    def _parse_with_pykotor(cls, data: bytes, name: str) -> Optional['TwoDA']:
         """Parse through PyKotor when available, then normalize to this API."""
         try:
             from pykotor.resource.formats.twoda import read_2da
@@ -136,7 +136,8 @@ class TwoDA:
         rows: List[List[str]] = []
         labels: List[str] = []
         for row in parsed:
-            labels.append(str(getattr(row, "label", "")))
+            label = getattr(row, "label", "")
+            labels.append(str(label() if callable(label) else label))
             values: List[str] = []
             for column in tda.columns:
                 try:
@@ -149,7 +150,7 @@ class TwoDA:
         return tda
 
     @classmethod
-    def from_file(cls, path: str) -> '2DA':
+    def from_file(cls, path: str) -> 'TwoDA':
         """Load from a loose .2da file on disk."""
         import os
         name = os.path.splitext(os.path.basename(path))[0]
@@ -160,7 +161,7 @@ class TwoDA:
     # ── Binary V2.b parser ────────────────────────────────────────────────────
 
     @classmethod
-    def _parse_binary(cls, data: bytes, name: str) -> '2DA':
+    def _parse_binary(cls, data: bytes, name: str) -> 'TwoDA':
         """
         KotOR binary 2DA format (V2.b) – confirmed layout from game files:
 
@@ -249,7 +250,7 @@ class TwoDA:
     # ── ASCII V2.0 parser ─────────────────────────────────────────────────────
 
     @classmethod
-    def _parse_ascii(cls, data: bytes, name: str) -> '2DA':
+    def _parse_ascii(cls, data: bytes, name: str) -> 'TwoDA':
         """
         ASCII 2DA format:
           Line 0: "2DA V2.0"
