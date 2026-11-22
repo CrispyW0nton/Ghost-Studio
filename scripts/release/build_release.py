@@ -94,7 +94,7 @@ def stage(version: str) -> Path:
 
 
 def pack(stage_dir: Path) -> None:
-    archive_path = stage_dir.with_suffix(".zip")
+    archive_path = DIST / f"{stage_dir.name}.zip"
     if archive_path.exists():
         archive_path.unlink()
     with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:

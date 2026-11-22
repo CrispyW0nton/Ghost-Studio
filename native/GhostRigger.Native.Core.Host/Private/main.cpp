@@ -636,7 +636,18 @@ int run_hosted_python(int argc, wchar_t* argv[]) {
 
     auto repo_root = find_repo_root();
     if (!repo_root) {
-        show_error(L"GhostRigger.Native.Core.Host could not find GhostRigger.sln or pyproject.toml/native.");
+        // Release layout: no source checkout. The Python code ships as DLL
+        // resources beside GhostStudio.exe, with main.py and the payload folder.
+        if (auto exe_dir = executable_directory();
+            exe_dir && fs::exists(*exe_dir / L"main.py") && fs::is_directory(*exe_dir / L"GhostRiggerPythonPayload")) {
+            repo_root = *exe_dir;
+        }
+    }
+    if (!repo_root) {
+        show_error(
+            L"GhostStudio could not find its files. Keep GhostStudio.exe in the unzipped folder "
+            L"next to main.py and the GhostRiggerPythonPayload folder."
+        );
         return 2;
     }
 
