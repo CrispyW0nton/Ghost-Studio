@@ -59,6 +59,10 @@ def capture_rest_pose_bases(armature):
     return bases
 
 
+STATIC_POSE_EPSILON = 1e-6
+TRANSFORM_DATA_PATHS = ("location", "rotation_quaternion", "rotation_euler", "rotation_axis_angle", "scale")
+
+
 def pick_action(armature, action_name: str):
     if action_name:
         action = bpy.data.actions.get(action_name)
@@ -70,6 +74,84 @@ def pick_action(armature, action_name: str):
     if bpy.data.actions:
         return bpy.data.actions[0]
     raise RuntimeError("No action found in FBX")
+
+
+def bind_action(armature, action):
+    """Assign ``action`` to the armature, including its slot on Blender 4.4+.
+
+    Blender 4.4+ uses slotted actions: assigning ``animation_data.action`` alone
+    leaves ``action_slot`` empty when no slot identifier matches the object, and
+    the armature then evaluates its rest pose on every frame. FBX takes import
+    with per-take slot names, so the slot must be bound explicitly.
+    """
+
+    animation_data = armature.animation_data_create()
+    animation_data.action = action
+    if not hasattr(animation_data, "action_slot"):
+        return None  # Blender < 4.4: legacy actions bind directly.
+    slot = animation_data.action_slot
+    if slot is not None:
+        return slot
+    candidates = list(getattr(animation_data, "action_suitable_slots", None) or [])
+    if not candidates:
+        candidates = [
+            candidate
+            for candidate in action.slots
+            if getattr(candidate, "target_id_type", "OBJECT") in {"OBJECT", "UNSPECIFIED"}
+        ]
+    if not candidates:
+        candidates = list(action.slots)
+    if not candidates:
+        raise RuntimeError(f"Action '{action.name}' has no slots to bind to '{armature.name}'")
+    preferred = [candidate for candidate in candidates if candidate.identifier == f"OB{armature.name}"]
+    animation_data.action_slot = (preferred or candidates)[0]
+    if animation_data.action_slot is None:
+        raise RuntimeError(f"Could not bind a slot of action '{action.name}' to '{armature.name}'")
+    return animation_data.action_slot
+
+
+def action_fcurves(action, slot):
+    """Return the action's F-curves for ``slot`` (slotted 4.4+/5.x) or legacy ``action.fcurves``."""
+
+    if slot is not None and hasattr(action, "layers"):
+        curves = []
+        for layer in action.layers:
+            for strip in layer.strips:
+                channelbag = strip.channelbag(slot) if hasattr(strip, "channelbag") else None
+                if channelbag is not None:
+                    curves.extend(channelbag.fcurves)
+        return curves
+    return list(getattr(action, "fcurves", None) or [])
+
+
+def action_key_motion(action, slot) -> float:
+    """Largest keyed value range across the action's transform F-curves (0 = static action)."""
+
+    spread = 0.0
+    for fcurve in action_fcurves(action, slot):
+        path = str(fcurve.data_path)
+        if not path.endswith(TRANSFORM_DATA_PATHS):
+            continue
+        values = [float(point.co[1]) for point in fcurve.keyframe_points]
+        if len(values) >= 2:
+            spread = max(spread, max(values) - min(values))
+    return spread
+
+
+def sampled_pose_spread(curves) -> float:
+    """Largest change of any bone world-matrix entry from the clip's first sampled frame."""
+
+    spread = 0.0
+    for samples in curves.values():
+        if len(samples) < 2:
+            continue
+        first = samples[0]["matrix"]
+        for sample in samples[1:]:
+            matrix = sample["matrix"]
+            for row in range(4):
+                for col in range(4):
+                    spread = max(spread, abs(matrix[row][col] - first[row][col]))
+    return spread
 
 
 def action_entries():
@@ -97,8 +179,8 @@ def main():
         raise RuntimeError("FBX import produced no armature")
     armature = armatures[0]
     action = pick_action(armature, args.action)
-    armature.animation_data_create()
-    armature.animation_data.action = action
+    slot = bind_action(armature, action)
+    key_motion = action_key_motion(action, slot)
 
     frame_start = int(round(action.frame_range[0]))
     frame_end = int(round(action.frame_range[1]))
@@ -136,12 +218,24 @@ def main():
                 }
             )
 
+    pose_spread = sampled_pose_spread(curves)
+    if len(frames) >= 2 and key_motion > STATIC_POSE_EPSILON and pose_spread <= STATIC_POSE_EPSILON:
+        raise RuntimeError(
+            f"Static sample: action '{action.name}' has keyed motion ({key_motion:.6g}) but all "
+            f"{len(frames)} sampled poses are identical (Blender {bpy.app.version_string}, slot "
+            f"{getattr(slot, 'identifier', None)!r}). The action is not driving the armature."
+        )
+
     meshes = [obj.name for obj in bpy.data.objects if obj.type == "MESH"]
     payload = {
         "success": True,
         "source_fbx": str(args.fbx),
+        "blender_version": bpy.app.version_string,
         "armature_name": armature.name,
         "action_name": action.name,
+        "action_slot": getattr(slot, "identifier", None),
+        "action_key_motion": key_motion,
+        "sampled_pose_spread": pose_spread,
         "actions": action_entries(),
         "source_bone_count": len(source_bones),
         "source_bones": source_bones,
