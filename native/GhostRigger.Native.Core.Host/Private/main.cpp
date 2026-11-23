@@ -444,7 +444,20 @@ std::optional<fs::path> python_home_from_directory(const fs::path& path) {
     return std::nullopt;
 }
 
+// Release zips ship a private Python 3.13 runtime in a "python" folder beside
+// GhostStudio.exe, so users need no Python install.
+std::optional<fs::path> bundled_python_home() {
+    if (auto exe_dir = executable_directory()) {
+        return python_home_from_directory(*exe_dir / L"python");
+    }
+    return std::nullopt;
+}
+
 std::optional<fs::path> find_python_home() {
+    if (auto bundled_home = bundled_python_home()) {
+        return bundled_home;
+    }
+
     if (auto explicit_home = python_home_from_directory(get_env_wstring(L"GHOSTRIGGER_PYTHON_HOME"))) {
         return explicit_home;
     }
@@ -514,6 +527,15 @@ bool configure_embedded_python(PyConfig& config, const fs::path& repo_root, cons
     config.site_import = 1;
     config.install_signal_handlers = 1;
     config.write_bytecode = 0;
+
+    // The bundled runtime is self-contained: ignore PYTHONHOME / PYTHONPATH and
+    // the user's own site-packages so another Python install cannot leak in.
+    const auto bundled_home = bundled_python_home();
+    std::error_code same_home_error;
+    if (bundled_home && fs::equivalent(*bundled_home, python_home, same_home_error)) {
+        config.use_environment = 0;
+        config.user_site_directory = 0;
+    }
 
     if (!set_python_config_string(config, &config.home, python_home.wstring())) {
         return false;
@@ -654,8 +676,9 @@ int run_hosted_python(int argc, wchar_t* argv[]) {
     auto python_home = find_python_home();
     if (!python_home) {
         show_error(
-            L"GhostRigger.Native.Core.Host could not find an embeddable Python 3.13 home. "
-            L"Set GHOSTRIGGER_PYTHON to a Python executable inside the Python 3.13 install."
+            L"GhostStudio could not find its Python 3.13 runtime. Release builds keep it in the "
+            L"\"python\" folder beside GhostStudio.exe; re-extract the zip if it is missing. "
+            L"Source builds can set GHOSTRIGGER_PYTHON_HOME to a Python 3.13 install folder."
         );
         return 3;
     }

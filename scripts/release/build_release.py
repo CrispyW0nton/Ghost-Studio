@@ -5,6 +5,10 @@ Usage:
 
 Output: build/release/GhostStudio-v<version>-win64.zip plus a .sha256 file.
 
+Run it with 64-bit Python 3.13. The zip carries a private copy of that Python
+in <zip>/python with the runtime packages from requirements.txt, so users just
+unzip and start GhostStudio.exe (no Python install, no setup step).
+
 MSBuild runs with a short PATH. A long user PATH plus the Visual C++ tool
 folders overflows, and the post-build steps then fail with exit 9009
 ("xcopy" / "powershell" is not recognized). The payload generator gets the
@@ -27,7 +31,15 @@ OUT = REPO / "build" / "vs" / "x64" / "Release"
 DIST = REPO / "build" / "release"
 SKIP_SUFFIX = {".pdb", ".lib", ".exp", ".ilk", ".iobj", ".ipdb", ".log"}
 STAGED_DIRS = {"scripts", "GhostRiggerPythonPayload"}
-REPO_FILES = ("LICENSE", "NOTICE", "requirements.txt")
+REPO_FILES = ("LICENSE", "NOTICE")
+# Build-only packages from requirements.txt; they stay out of the zip.
+BUILD_ONLY_REQS = {"pyinstaller", "sip"}
+RUNTIME_FILES = ("python.exe", "pythonw.exe", "python313.dll", "python3.dll",
+                 "vcruntime140.dll", "vcruntime140_1.dll", "LICENSE.txt")
+# Standard-library parts Ghost Studio never uses (no Tk GUI, no test suite).
+LIB_SKIP = {"site-packages", "test", "idlelib", "tkinter", "turtledemo", "ensurepip"}
+DLLS_SKIP = {"_tkinter.pyd", "tcl86t.dll", "tk86t.dll"}
+SMOKE_IMPORTS = "import PySide6.QtWidgets, numpy, PIL, moderngl, wgpu, pykotor, trimesh, flask, mcp"
 
 
 def find_msbuild(explicit: str | None) -> Path:
@@ -83,14 +95,71 @@ def stage(version: str) -> Path:
                             ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for name in REPO_FILES:
         shutil.copy2(REPO / name, stage_dir / name)
-    shutil.copy2(KIT / "setup.bat", stage_dir / "setup.bat")
+    bundle_python(stage_dir)
     readme = (KIT / "README-FIRST.txt").read_text(encoding="utf-8").replace("@VERSION@", version)
     (stage_dir / "README-FIRST.txt").write_text(readme, encoding="utf-8", newline="\r\n")
-    missing = [n for n in ("GhostStudio.exe", "python313.dll") if not (stage_dir / n).exists()]
+    missing = [n for n in ("GhostStudio.exe", "python313.dll", "python/python.exe",
+                           "python/python313.dll", "python/Lib/site-packages/PySide6")
+               if not (stage_dir / n).exists()]
     if missing:
         sys.exit(f"stage is missing {missing}")
     print(f"staged {len(list(stage_dir.glob('GhostRigger*.dll')))} GhostRigger DLLs")
     return stage_dir
+
+
+def runtime_requirements() -> Path:
+    """requirements.txt minus build-only packages."""
+    keep = []
+    for line in (REPO / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        spec = line.split("#", 1)[0].strip()
+        if not spec:
+            continue
+        name = spec.replace("_", "-").lower()
+        for sep in "[<>=!~ ;":
+            name = name.split(sep, 1)[0]
+        if name not in BUILD_ONLY_REQS:
+            keep.append(spec)
+    reqs = DIST / "runtime-requirements.txt"
+    reqs.write_text("\n".join(keep) + "\n", encoding="utf-8")
+    return reqs
+
+
+def bundle_python(stage_dir: Path) -> None:
+    """Copy the build Python 3.13 into <stage>/python and pip-install the
+    runtime packages into its Lib/site-packages."""
+    if sys.version_info[:2] != (3, 13) or sys.maxsize <= 2**32:
+        sys.exit("run build_release.py with 64-bit Python 3.13; its runtime is bundled")
+    base = Path(sys.base_prefix)
+    dest = stage_dir / "python"
+    dest.mkdir()
+    for name in RUNTIME_FILES:
+        shutil.copy2(base / name, dest / name)
+    shutil.copytree(base / "DLLs", dest / "DLLs",
+                    ignore=lambda _d, names: [n for n in names if n in DLLS_SKIP or n.endswith(".pdb")])
+    shutil.copytree(base / "Lib", dest / "Lib",
+                    ignore=lambda d, names: [n for n in names if n in {"__pycache__"} or n.endswith(".pyc")
+                                             or (Path(d) == base / "Lib" and n in LIB_SKIP)])
+    site = dest / "Lib" / "site-packages"
+    reqs = runtime_requirements()
+    cmd = [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "--no-warn-script-location",
+           "--target", str(site), "-r", str(reqs)]
+    print("bundling packages:", " ".join(cmd), flush=True)
+    if subprocess.run(cmd).returncode:
+        sys.exit("pip install into the bundled runtime failed")
+    shutil.rmtree(site / "bin", ignore_errors=True)  # console scripts point at the build Python
+    # Precompile once; the host runs with write_bytecode off, and unchecked-hash
+    # pycs stay valid after the zip rounds file times to 2 seconds.
+    subprocess.run([sys.executable, "-m", "compileall", "-q", "-f", "-j", "0",
+                    "--invalidation-mode", "unchecked-hash", str(dest / "Lib")])
+    # GhostStudio.exe links python313.dll from its own folder; keep that copy
+    # byte-identical to the runtime's so only one build of it ever loads.
+    for name in ("python313.dll", "python3.dll"):
+        shutil.copy2(dest / name, stage_dir / name)
+    check = subprocess.run([str(dest / "python.exe"), "-I", "-c", SMOKE_IMPORTS], cwd=dest)
+    if check.returncode:
+        sys.exit("bundled runtime failed its import check")
+    size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
+    print(f"bundled Python {sys.version.split()[0]} runtime: {size / 1e6:.0f} MB", flush=True)
 
 
 def pack(stage_dir: Path) -> None:

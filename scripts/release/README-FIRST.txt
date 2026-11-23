@@ -7,22 +7,16 @@ packaging. Source and docs: https://github.com/CrispyW0nton/Ghost-Studio
 
 Install
 -------
-1. Install 64-bit Python 3.13 from https://www.python.org/downloads/
-   (Windows installer). Keep the default install location.
-2. Unzip this folder anywhere, for example Documents\GhostStudio.
-3. Double-click setup.bat once. It installs the Python packages Ghost Studio
-   needs.
-4. Double-click GhostStudio.exe.
+1. Unzip this folder anywhere, for example Documents\GhostStudio.
+2. Double-click GhostStudio.exe.
 
-Keep GhostStudio.exe in this folder with its DLLs.
+Nothing else to install: Ghost Studio brings its own Python 3.13 and packages
+in the "python" folder. Keep GhostStudio.exe in this folder with its DLLs and
+the python folder.
 
 If Windows says VCRUNTIME140.dll or MSVCP140.dll is missing, install the
 Microsoft Visual C++ Redistributable (x64) from Microsoft:
 https://aka.ms/vs/17/release/vc_redist.x64.exe
-
-If your Python 3.13 is not in the default location, set the environment
-variable GHOSTRIGGER_PYTHON_HOME to that folder (the one holding python313.dll
-and Lib).
 
 First use
 ---------
