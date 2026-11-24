@@ -119,10 +119,30 @@ Near-term priorities:
 
 ## Installation
 
-### Six-step Windows installation
+### Quick install (release zip, no Python needed)
 
-Ghost-Studio does not yet have a one-click public installer. The first setup
-builds a copy of the program on your PC. **You do not need programming
+1. Download `GhostStudio-v<version>-win64.zip` from the
+   [latest release](https://github.com/CrispyW0nton/Ghost-Studio/releases/latest).
+2. Unzip it anywhere you can write to, for example `Documents\GhostStudio`.
+   Keep the folder together.
+3. Double-click `GhostStudio.exe`. If Windows says "Windows protected your PC",
+   click **More info → Run anyway** (the exe is not code-signed yet).
+
+Nothing else to install: the zip brings its own Python 3.13 and packages in
+its `python` folder. If Windows reports a missing `VCRUNTIME140.dll`, install
+the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+
+**AI agents (MCP):** point your client at the bundled interpreter:
+`command` = `<GhostStudio>\python\python.exe`, `args` =
+`["<GhostStudio>\mcp\scripts\mcp\start_kotormcp_stdio.py"]`, `env` =
+`K2_PATH` (and `K1_PATH`). See [KJA modders: start here](docs/KJA_MODDERS_START_HERE.md#5-connect-your-ai-agent).
+
+The six-step installation below builds Ghost-Studio from source; use it to
+develop Ghost-Studio itself.
+
+### Six-step Windows installation (build from source)
+
+Building from source compiles a copy of the program on your PC. **You do not need programming
 experience:** follow these six steps in order and do not skip the named
 installer options.
 
