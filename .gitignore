@@ -224,6 +224,7 @@ diagnostics/
 
 # ── User runtime state (never commit; auto-recreated on first launch) ─────────
 settings.json
+!/.claude/settings.json
 .env
 .env.*
 !.env.example
