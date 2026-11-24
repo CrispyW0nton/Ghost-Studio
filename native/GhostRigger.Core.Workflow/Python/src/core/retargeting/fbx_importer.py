@@ -326,6 +326,48 @@ def _load_backend_scene(
     return backend.load_scene(path)
 
 
+STATIC_SAMPLE_EPSILON = 1e-6
+
+
+def _check_blender_sample_not_static(
+    payload: dict[str, Any],
+    curves: Dict[str, list[tuple[float, np.ndarray]]],
+    action_name: str,
+    warnings: List[str],
+) -> None:
+    """Fail when every sampled pose of a multi-frame clip is identical.
+
+    Blender 4.4+ slotted actions sample the rest pose on every frame when the
+    action slot is not bound; the resulting MDL ships frozen animations and the
+    FBX/MDL parity gate cannot see it (both sides are equally static). A clip is
+    accepted as a genuine static hold only when the extraction script reports
+    that the action itself has no keyed transform motion.
+    """
+
+    multi_frame = [samples for samples in curves.values() if len(samples) >= 2]
+    if not multi_frame:
+        return
+    spread = 0.0
+    for samples in multi_frame:
+        first = samples[0][1]
+        for _time_value, matrix in samples[1:]:
+            spread = max(spread, float(np.max(np.abs(matrix - first))))
+            if spread > STATIC_SAMPLE_EPSILON:
+                return
+    key_motion = payload.get("action_key_motion")
+    if key_motion is not None and float(key_motion) <= STATIC_SAMPLE_EPSILON:
+        warnings.append(f"FBX clip '{action_name}' is a static hold: the action has no keyed motion.")
+        return
+    frame_count = max(len(samples) for samples in multi_frame)
+    raise FbxImportError(
+        f"Static FBX sample: all {frame_count} sampled poses of clip '{action_name}' are identical "
+        f"(Blender {payload.get('blender_version') or 'unknown'}, action key motion "
+        f"{key_motion if key_motion is not None else 'not reported'}). The action did not drive the "
+        "armature - check that scripts/blender_extract_ue5_animation.py binds the action slot "
+        "(Blender 4.4+)."
+    )
+
+
 def _scene_from_blender_payload(payload: dict[str, Any], *, source_path: str) -> BlenderFbxBackendScene:
     source_bones = [str(name) for name in (payload.get("source_bones") or []) if str(name).strip()]
     parent_map = {
@@ -363,6 +405,7 @@ def _scene_from_blender_payload(payload: dict[str, Any], *, source_path: str) ->
     warnings = [
         "FBX animation imported through Blender; transforms are evaluated after Blender's FBX axis/unit conversion."
     ]
+    _check_blender_sample_not_static(payload, curves, action_name, warnings)
     log_path = payload.get("log_path")
     metadata = {
         "backend": "blender",

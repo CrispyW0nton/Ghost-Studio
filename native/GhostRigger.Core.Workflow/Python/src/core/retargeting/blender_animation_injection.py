@@ -84,6 +84,8 @@ def run_blender_animation_extraction(
     cmd = [
         str(blender),
         "--background",
+        "--python-exit-code",
+        "1",
         "--python",
         str(extract_script),
         "--",
@@ -98,6 +100,8 @@ def run_blender_animation_extraction(
         cmd.extend(["--action", action_name])
 
     output_json.parent.mkdir(parents=True, exist_ok=True)
+    # Never fall back to a previous run's JSON (e.g. a static sample cached before a fix).
+    output_json.unlink(missing_ok=True)
     log_path = output_json.with_suffix(".blender.log")
     proc = subprocess.run(
         cmd,
