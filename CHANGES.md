@@ -1,5 +1,12 @@
 # Changes
 
+## 2026-11-24 - Add Ponytail as a project-scoped agent plugin
+
+- Owner: LordVaderCW. Contributed by bodencrouch.
+- Integrate [Ponytail](https://ponytail.dev/) 5.3.3 (minimal-change ruleset for coding agents) for everyone who opens the repository: Claude Code through `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`), Codex through the repo marketplace `.agents/plugins/marketplace.json` and `.codex/config.toml`, Cursor through the vendored always-on rule `.cursor/rules/ponytail.mdc`.
+- `AGENTS.md` gains a "Ponytail Minimal-Change Mode" section: per-agent setup, commands, and precedence of this manual over Ponytail. `CLAUDE.md` imports `AGENTS.md` so Claude Code versions without native `AGENTS.md` support load it. `.gitignore` re-includes `/.claude/settings.json`, which the runtime-state `settings.json` pattern was hiding.
+- Verification: JSON and TOML files parse; `git check-ignore` confirms every new file is tracked; the vendored Cursor rule is byte-identical to upstream at `ebd8654`. No application code changed, so no Python tests, native build or visible workflow testing apply. A live Claude Code/Codex install was not run in this change.
+
 ## 2026-11-09 - Make main the primary development branch
 
 - Owner: LordVaderCW.

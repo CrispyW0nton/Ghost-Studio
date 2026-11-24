@@ -18,6 +18,60 @@ task.
   corrupt transforms, or store large blobs in human-readable project formats.
 - Record completed changes in `CHANGES.md` with owner and verification details.
 
+## Ponytail Minimal-Change Mode
+
+[Ponytail](https://ponytail.dev/) ([DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail))
+is the project's agent ruleset for writing the smallest complete change: skip
+unrequested features, reuse what the codebase already has, then the standard
+library, then installed dependencies, and only then write new code. Work with it
+on by default.
+
+How each agent gets it (all project-scoped, checked in):
+
+- Claude Code: `.claude/settings.json` registers the `ponytail` marketplace and
+  enables `ponytail@ponytail`. Accept the workspace-trust prompt, then install it
+  once per clone: `claude plugin install ponytail@ponytail --scope project` (or
+  `/plugin install ponytail@ponytail`), then `/reload-plugins`.
+- Codex: `.agents/plugins/marketplace.json` is the repo marketplace
+  (`ghost-studio`) and `.codex/config.toml` enables `ponytail@ghost-studio`.
+  Install it from `/plugins`, then trust its two hooks under `/hooks`.
+- Cursor: `.cursor/rules/ponytail.mdc` is an always-on copy of the ruleset.
+- Any other agent: follow the ruleset text in `.cursor/rules/ponytail.mdc`.
+
+The Claude Code and Codex plugins run two small Node.js lifecycle hooks, so
+`node` must be on the non-interactive shell's `PATH`. Without it the rules still
+load, but each hook call prints a harmless `node: command not found`.
+
+Commands (Claude Code and Codex plugin):
+
+- `/ponytail lite|full|ultra|off`: change intensity for the session. `full` is
+  the default; set `PONYTAIL_DEFAULT_MODE` to change it per machine.
+- `/ponytail-review`: review the current diff for over-engineering before
+  handing work back or opening a PR.
+- `/ponytail-audit`: the same review across the whole repository. This is a
+  broad sweep, so run it only when the user explicitly asks for it.
+- `/ponytail-debt`: collect `shortcut: <limit>, <when to upgrade>` comments into
+  a ledger.
+- `/ponytail-help`: quick reference.
+
+This manual wins wherever it and Ponytail disagree:
+
+- Required project work is never "unrequested": the `CHANGES.md` entry,
+  `CHEETSHEET.md` updates, native payload regeneration and the visible testing in
+  Testing Rules are part of finishing the change.
+- The smallest change still lives in the owning layer from Architecture
+  Boundaries and `knowledge_base/package_ownership_model.md`. Do not move code
+  into a wrong layer to save lines.
+- Ponytail's "leave one small test or self-check" means a targeted check from
+  Testing Rules, never a broad suite.
+- Ponytail's closing line (what was skipped or not checked, plus any risk) goes
+  alongside the Final Pre-Response Checklist, not in place of it.
+
+The vendored `.cursor/rules/ponytail.mdc` matches upstream `AGENTS.md` at
+ponytail 5.3.3 (`ebd8654`). When upstream changes the ruleset, copy the new
+`.cursor/rules/ponytail.mdc` from the ponytail repository; the plugins update
+through their marketplaces.
+
 ## Knowledgebase And Local Books
 
 The local book-derived working notes live under `docs/knowledgebase/`.

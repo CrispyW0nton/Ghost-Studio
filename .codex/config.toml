@@ -1,0 +1,4 @@
+# Project-scoped Codex config. Ponytail comes from the repo marketplace in
+# .agents/plugins/marketplace.json; see "Ponytail Minimal-Change Mode" in AGENTS.md.
+[plugins."ponytail@ghost-studio"]
+enabled = true
