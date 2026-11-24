@@ -1,5 +1,22 @@
 # Changes
 
+## 2026-11-24 - Release 5.3.0: bundled Python, no install step
+
+- Owner: Claude (director: "Keep working on the bundled ghost studio release until it is finished").
+- The Windows release zip carries a private Python 3.13 x64 runtime in `<zip>/python` with the runtime packages from
+  `requirements.txt`; users unzip and start `GhostStudio.exe` (no Python install, no `setup.bat`). The host prefers the
+  bundled home and ignores `PYTHON*` variables and user site-packages with it.
+- New: `<zip>/mcp` carries the MCP servers' Python sources and start scripts, so AI agents launch KotorMCP with the
+  bundled interpreter (`python\python.exe mcp\scripts\mcp\start_kotormcp_stdio.py`). `build_release.py` checks that
+  KotorMCP imports and registers its tools with the bundled runtime; README-FIRST and README document the agent setup.
+- The bundled packages are pinned to `uv.lock` (keeping `requirements.txt`'s own exact pins, such as `pykotor==2.3.1`):
+  an unpinned build had pulled `mcp` 2.3.0, whose low-level `Server` no longer has the `list_tools` decorator
+  KotorMCP uses. The build check now also builds the MCP server, so an SDK API break stops the build.
+- Includes main's 2026-11-23 retargeting fix (bind the action slot when sampling FBX clips, Blender 4.4+).
+- Verification: the zip unzipped into a fresh folder with no Python on PATH and `PYTHON*` variables removed: bundled
+  imports (PySide6, numpy, pykotor, mcp) passed; KotorMCP over stdio answered initialize and listed 172 tools;
+  `GhostStudio.exe` stayed up for 25 s with no errors in its log. No in-app workflow was exercised.
+
 ## 2026-11-09 - Make main the primary development branch
 
 - Owner: LordVaderCW.

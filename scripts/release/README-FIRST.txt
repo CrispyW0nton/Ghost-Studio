@@ -24,6 +24,18 @@ Open Settings > Game Paths and set your KOTOR 2 (and KOTOR 1) folder.
 Making mods for Kotor Academy: Expanded Galaxy? Read
 https://github.com/CrispyW0nton/Ghost-Studio/blob/main/docs/KJA_MODDERS_START_HERE.md
 
+Use it with an AI agent (Claude, Codex, Cursor)
+-----------------------------------------------
+Ghost Studio's KotorMCP server runs on the bundled Python. Point your MCP
+client at it, using this folder's full path (example: Documents\GhostStudio):
+
+  command: C:\path\to\GhostStudio\python\python.exe
+  args:    C:\path\to\GhostStudio\mcp\scripts\mcp\start_kotormcp_stdio.py
+  env:     K2_PATH = your KOTOR 2 folder (and K1_PATH for KOTOR 1)
+
+Point K2_PATH at a copy of the game while you experiment, and approve any tool
+that installs files or drives a running game yourself.
+
 License
 -------
 MIT. See LICENSE and NOTICE.
